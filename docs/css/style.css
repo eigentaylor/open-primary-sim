@@ -169,6 +169,22 @@ button:hover {
   border-radius: 2px;
 }
 
+.headline-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.headline-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 table.headline-table {
   width: 100%;
   border-collapse: collapse;

@@ -68,8 +68,11 @@ def atkinson_scores(df: pd.DataFrame, n_draws: int = 500,
                     rng: np.random.Generator = None) -> dict[str, np.ndarray]:
     """
     Replicate Atkinson et al. method:
-    Draw n_draws ideal points per respondent uniformly from their pid7 bin,
-    weighted by commonweight.
+    Build a weighted empirical distribution per state by resampling
+    respondents with probability proportional to commonweight (correcting
+    for CCES's well-documented Democratic skew in the raw/unweighted panel),
+    then draw one ideal point uniformly from the resampled respondent's
+    pid7 bin. n_draws sets the resampled distribution size per state.
 
     Returns dict: state abbreviation → 1-D array of ideal point scores.
     """
@@ -78,13 +81,12 @@ def atkinson_scores(df: pd.DataFrame, n_draws: int = 500,
 
     state_scores = {}
     for state, grp in df.groupby('state'):
-        scores = []
         weights = grp['weight'].values
         weights = weights / weights.sum()          # normalise
-        for _, row in grp.iterrows():
-            lo, hi = PID7_TO_INTERVAL[int(row['pid7'])]
-            scores.append(rng.uniform(lo, hi))
-        state_scores[state] = np.array(scores)
+        pid7 = grp['pid7'].values
+        idx = rng.choice(len(grp), size=n_draws, replace=True, p=weights)
+        bins = np.array([PID7_TO_INTERVAL[int(p)] for p in pid7[idx]])
+        state_scores[state] = rng.uniform(bins[:, 0], bins[:, 1])
 
     return state_scores
 
