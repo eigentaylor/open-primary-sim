@@ -257,6 +257,12 @@ footer {
   stroke: #06b6d4;
 }
 
+.median-line.party-line {
+  stroke: var(--muted);
+  stroke-dasharray: none;
+  stroke-width: 1;
+}
+
 .median-label {
   fill: var(--muted);
   font-size: 10px;
@@ -303,6 +309,43 @@ circle.candidate.eliminated {
   fill: none;
   stroke: var(--winner);
   stroke-width: 2;
+}
+.legend-pool-median {
+  fill: #06b6d4;
+}
+.legend-party-line {
+  fill: var(--muted);
+}
+
+.draw-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px 16px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.draw-metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.draw-metric-label {
+  color: var(--muted);
+}
+
+.draw-metric-value {
+  font-weight: 600;
+}
+
+.draw-metric-note {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .chart-title {
