@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open Primary Reform Simulator — Runoff 1D</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Open Primary Reform Simulator</h1>
+    <p class="subtitle">
+      An extension of the Atkinson, Ganz &amp; Mantus (2024) 1D agent-based election model,
+      using real per-state voter distributions from the 2020 CCES to compare choose-one
+      plurality vs. approval open primaries, and top-2 vs. top-k general-election advancement.
+    </p>
+  </header>
+
+  <main>
+    <section class="controls-panel">
+      <div class="control-group">
+        <label for="state-select">State</label>
+        <select id="state-select"></select>
+      </div>
+
+      <div class="control-group">
+        <label for="rule-select">Primary rule (illustrative draw)</label>
+        <select id="rule-select"></select>
+      </div>
+      <div class="control-group">
+        <label for="k-select">k (finalists)</label>
+        <select id="k-select"></select>
+      </div>
+      <div class="control-group buttons">
+        <button id="redraw-btn" type="button">Redraw</button>
+        <button id="reroll-seed-btn" type="button">Reroll seed</button>
+      </div>
+
+      <div class="control-group slider">
+        <label for="delta-slider">δ — extremist turnout weight <span id="delta-value"></span></label>
+        <input id="delta-slider" type="range" min="1" max="3" step="0.1" />
+      </div>
+      <div class="control-group slider">
+        <label for="gamma-slider">γ — primary electability weight <span id="gamma-value"></span></label>
+        <input id="gamma-slider" type="range" min="0" max="1" step="0.05" />
+      </div>
+      <div class="control-group slider">
+        <label for="tau-slider">τ — approval fixed threshold (exploratory) <span id="tau-value"></span></label>
+        <input id="tau-slider" type="range" min="0" max="1" step="0.05" />
+      </div>
+      <div class="control-group slider">
+        <label for="nsim-slider">Monte Carlo iterations per config <span id="nsim-value"></span></label>
+        <input id="nsim-slider" type="range" min="50" max="1000" step="50" />
+      </div>
+
+      <div id="sweep-status" class="status"></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Voter distribution</h2>
+      <div id="density-chart" class="chart-container"></div>
+      <h2>Illustrative primary draw</h2>
+      <div id="draw-illustration" class="chart-container"></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Headline comparison</h2>
+      <p class="section-note">
+        Plurality top-2 (current CA/OH/WA default) vs. approval top-2 vs. plurality top-3,
+        expected value of each metric over the Monte Carlo run, with change vs. the plurality
+        top-2 baseline.
+      </p>
+      <div id="headline-table"></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Metrics as a function of k</h2>
+      <p class="section-note">
+        Each panel sweeps k ∈ {2,3,4,5} for all three primary rules. VSE points with no basis
+        (denominator ≈ 0) are shown as a gap in the line, not a zero.
+      </p>
+      <div id="metrics-legend" class="metrics-legend"></div>
+      <div id="metrics-grid" class="metrics-grid"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Model: Atkinson, Ganz &amp; Mantus, "A Simple Agent-Based Model for Simulating Single
+      Winner Elections" (2024). Voter distributions: 2020 CCES. This tool's approval-primary
+      variants and 6 outcome metrics are extensions not in the source paper.
+    </p>
+  </footer>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
