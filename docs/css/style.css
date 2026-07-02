@@ -147,6 +147,60 @@ button:hover {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px;
+  cursor: zoom-in;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.metric-chart-cell:hover {
+  border-color: var(--accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--accent, #2563eb);
+}
+
+.chart-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.chart-modal-overlay[hidden] {
+  display: none;
+}
+
+.chart-modal {
+  position: relative;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 24px;
+  width: min(900px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  cursor: default;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.chart-modal-body {
+  width: 100%;
+}
+
+.chart-modal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.chart-modal-close:hover {
+  color: inherit;
 }
 
 .metrics-legend {

@@ -15,8 +15,8 @@ const RULE_LABELS = {
 };
 
 // sweepResults: output of runFullSweep(), keyed "rule_kK".
-export function renderMetricVsKChart(container, metricMeta, sweepResults) {
-  const { g, innerWidth, innerHeight } = setupSvg(container, { height: 200 });
+export function renderMetricVsKChart(container, metricMeta, sweepResults, { height = 200 } = {}) {
+  const { g, innerWidth, innerHeight } = setupSvg(container, { height });
 
   const x = d3.scalePoint().domain(K_VALUES).range([0, innerWidth]).padding(0.5);
 

@@ -32,6 +32,7 @@ export async function initUI() {
   buildRuleKControls();
   syncParamLabels();
   wireControls();
+  wireModal();
 
   state.worker = new Worker('./js/sim-worker.js', { type: 'module' });
   state.worker.onmessage = handleWorkerMessage;
@@ -171,11 +172,35 @@ function renderMetricCharts(sweepResults) {
   METRICS.forEach((meta) => {
     const cell = document.createElement('div');
     cell.className = 'metric-chart-cell';
+    cell.title = 'Click to enlarge';
     grid.appendChild(cell);
     renderMetricVsKChart(cell, meta, sweepResults);
+    cell.addEventListener('click', () => openMetricModal(meta));
   });
   el('metrics-legend').innerHTML = '';
   renderSharedLegend(el('metrics-legend'));
+}
+
+function openMetricModal(meta) {
+  const body = el('chart-modal-body');
+  body.innerHTML = '';
+  renderMetricVsKChart(body, meta, state.sweepResults, { height: 420 });
+  el('chart-modal-overlay').hidden = false;
+}
+
+function closeMetricModal() {
+  el('chart-modal-overlay').hidden = true;
+  el('chart-modal-body').innerHTML = '';
+}
+
+function wireModal() {
+  el('chart-modal-close').addEventListener('click', closeMetricModal);
+  el('chart-modal-overlay').addEventListener('click', (e) => {
+    if (e.target === el('chart-modal-overlay')) closeMetricModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !el('chart-modal-overlay').hidden) closeMetricModal();
+  });
 }
 
 function setStatus(text, isError = false) {
