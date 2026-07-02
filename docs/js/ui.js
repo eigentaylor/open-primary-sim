@@ -78,6 +78,8 @@ function buildRuleKControls() {
 }
 
 function syncParamLabels() {
+  el('m-slider').value = state.config.M;
+  el('m-value').textContent = String(state.config.M);
   el('delta-slider').value = state.config.delta;
   el('delta-value').textContent = state.config.delta.toFixed(2);
   el('gamma-slider').value = state.config.gamma;
@@ -111,6 +113,14 @@ function wireControls() {
   el('reroll-seed-btn').addEventListener('click', () => {
     state.seed = Math.floor(Math.random() * 2 ** 31);
     state.drawIndex = 0;
+    runAll();
+  });
+
+  el('m-slider').addEventListener('input', (e) => {
+    el('m-value').textContent = e.target.value;
+  });
+  el('m-slider').addEventListener('change', (e) => {
+    state.config.M = Number(e.target.value);
     runAll();
   });
 

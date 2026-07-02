@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Open Primary Reform Simulator — Runoff 1D</title>
   <link rel="stylesheet" href="./css/style.css" />
 </head>
+
 <body>
   <header>
     <h1>Open Primary Reform Simulator</h1>
@@ -36,6 +38,10 @@
         <button id="reroll-seed-btn" type="button">Reroll seed</button>
       </div>
 
+      <div class="control-group slider">
+        <label for="m-slider">M — primary candidate slate size <span id="m-value"></span></label>
+        <input id="m-slider" type="range" min="5" max="61" step="1" />
+      </div>
       <div class="control-group slider">
         <label for="delta-slider">δ — extremist turnout weight <span id="delta-value"></span></label>
         <input id="delta-slider" type="range" min="1" max="3" step="0.1" />
@@ -95,4 +101,5 @@
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script type="module" src="./js/main.js"></script>
 </body>
+
 </html>

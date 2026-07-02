@@ -12,7 +12,7 @@ export const K_VALUES = [2, 3, 4, 5];
 export const DEFAULT_CONFIG = {
   N: 4000, // voter pool size, shared across all configs in a sweep
   nSim: 200, // Monte Carlo iterations per {rule,k} config
-  M: 10, // primary candidate slate size (paper's value; not user-adjustable)
+  M: 10, // primary candidate slate size (paper's value; user-adjustable, must be >= max(K_VALUES))
   delta: 1.0, // extremist-turnout weight (1 = no bias)
   gamma: 0.0, // primary electability weight (0 = pure ideological distance)
   tau: 0.25, // approval fixed-threshold radius (exploratory, no paper basis)
