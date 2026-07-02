@@ -99,12 +99,30 @@ export function tallyForRule(rule, pool, candidates, weights, xMedian, gamma, ta
   throw new Error(`Unknown primary rule: ${rule}`);
 }
 
+// Pool-weighted sum of each candidate's electability-blended utility, used
+// only as the rankCandidates() tie-break -- a rule-agnostic, gamma-consistent
+// secondary signal (voters' own aggregate utility) rather than an arbitrary
+// coin flip, for the (common, especially at delta=1 or gamma=1) case where
+// two candidates land on the exact same tally.
+export function sumUtility(pool, candidates, weights, xMedian, gamma) {
+  const M = candidates.length;
+  const sums = new Float64Array(M);
+  const util = new Float64Array(M);
+  for (let i = 0; i < pool.length; i++) {
+    computeVoterUtilities(pool[i], candidates, xMedian, gamma, util);
+    for (let j = 0; j < M; j++) sums[j] += weights[i] * util[j];
+  }
+  return sums;
+}
+
 // Full M-length ranking (NOT a top-k slice) sorted descending by tally value.
-// Ties (common for approval tallies at delta=1, where counts are integers)
-// broken via a random key drawn once per candidate from the seeded RNG, so
+// Ties (common for approval tallies at delta=1, where counts are integers, or
+// at gamma=1 where every voter shares the same utility ranking) broken first
+// by summed pool utility (still a real signal, not noise), then by a random
+// key drawn once per candidate from the seeded RNG for any residual tie, so
 // tie order is reproducible-given-seed but not biased toward array order.
 // Returns [{candidateX, tallyValue, originalIndex}, ...] length M.
-export function rankCandidates(tally, candidates, rng) {
+export function rankCandidates(tally, candidates, rng, utilitySum = null) {
   const M = candidates.length;
   const entries = new Array(M);
   for (let j = 0; j < M; j++) {
@@ -112,9 +130,12 @@ export function rankCandidates(tally, candidates, rng) {
       candidateX: candidates[j],
       tallyValue: tally[j],
       originalIndex: j,
+      utilitySum: utilitySum ? utilitySum[j] : 0,
       tieKey: rng.uniform(),
     };
   }
-  entries.sort((a, b) => b.tallyValue - a.tallyValue || b.tieKey - a.tieKey);
+  entries.sort(
+    (a, b) => b.tallyValue - a.tallyValue || b.utilitySum - a.utilitySum || b.tieKey - a.tieKey
+  );
   return entries;
 }

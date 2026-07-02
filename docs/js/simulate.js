@@ -4,7 +4,7 @@
 // that's sweep.js's job (see the VSE sums-then-divide-once requirement).
 
 import { sampleMixture, median, mixtureCdf } from './distributions.js';
-import { voterWeight, tallyForRule, rankCandidates, idealUtility } from './primary-rules.js';
+import { voterWeight, tallyForRule, rankCandidates, sumUtility, idealUtility } from './primary-rules.js';
 
 // ---- Run-level setup (once per state selection; shared across all
 // {rule,k} configs in a sweep -- see plan Sec "Decisions resolved") --------
@@ -69,7 +69,8 @@ export function runIterationDetailed(ctx, rule, k, rng) {
 
   // Stage 3: primary tally (dispatches by rule) -> full M-length ranking.
   const tally = tallyForRule(rule, pool, candidates, weights, xMedianPool, config.gamma, config.tau, rng);
-  const ranking = rankCandidates(tally, candidates, rng);
+  const utilitySum = sumUtility(pool, candidates, weights, xMedianPool, config.gamma);
+  const ranking = rankCandidates(tally, candidates, rng, utilitySum);
   const finalists = ranking.slice(0, k);
 
   // Stage 4: winner = finalist closest to the pool median (paper's
