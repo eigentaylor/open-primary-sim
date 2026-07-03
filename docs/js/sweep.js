@@ -134,15 +134,16 @@ export function runFullSweep(stateParams, config, seed, onProgress) {
 
 // ---- M-sweep: fixed {rule,k} comparison across primary slate size M --------
 //
-// Approval top-2 vs. plurality top-3 vs. approval top-3, mean-threshold
-// approval only (not the fixed-tau variant -- tau has no paper basis and
-// isn't part of this comparison), as M varies. Unlike RULES/K_VALUES above
-// (many rule/k combos at one fixed M), this sweeps M itself against a small
-// fixed set of rule/k combos, so it's a separate function rather than an
-// extra fullRulesAndKs() case.
-export const M_VALUES = [5, 10, 15, 20, 25, 30, 40, 50, 61];
+// Plurality top-2 (baseline) vs. approval top-2 vs. plurality top-3 vs.
+// approval top-3, mean-threshold approval only (not the fixed-tau variant --
+// tau has no paper basis and isn't part of this comparison), as M varies.
+// Unlike RULES/K_VALUES above (many rule/k combos at one fixed M), this
+// sweeps M itself against a small fixed set of rule/k combos, so it's a
+// separate function rather than an extra fullRulesAndKs() case.
+export const M_VALUES = [5, 10, 15, 20, 25, 30, 60];
 
 export const M_SWEEP_RULES_AND_KS = [
+  { rule: 'plurality', k: 2 },
   { rule: 'approval-mean', k: 2 },
   { rule: 'plurality', k: 3 },
   { rule: 'approval-mean', k: 3 },

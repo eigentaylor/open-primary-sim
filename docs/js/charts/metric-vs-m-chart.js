@@ -1,10 +1,11 @@
 // Metric-vs-M line chart: x = M (primary candidate slate size) in
-// sweep.js's M_VALUES, one line per fixed rule/k comparison -- approval
-// top-2 vs. plurality top-3 (always shown) vs. approval top-3 (optional,
-// on by default). Mean-threshold approval only, not fixed-tau. Structurally
-// mirrors metric-vs-k-chart.js (same small-multiple-per-metric approach)
-// but the series set here is a fixed 3-way comparison rather than
-// "whichever rules are active", so it's a separate module.
+// sweep.js's M_VALUES, one line per fixed rule/k comparison -- plurality
+// top-2 (baseline) vs. approval top-2 vs. plurality top-3 (always shown)
+// vs. approval top-3 (optional, on by default). Mean-threshold approval
+// only, not fixed-tau. Structurally mirrors metric-vs-k-chart.js (same
+// small-multiple-per-metric approach) but the series set here is a fixed
+// 4-way comparison rather than "whichever rules are active", so it's a
+// separate module.
 
 import { M_VALUES } from '../sweep.js';
 import { setupSvg, computeYDomain } from './chart-utils.js';
@@ -12,6 +13,7 @@ import { setupSvg, computeYDomain } from './chart-utils.js';
 const d3 = window.d3;
 
 export const M_SERIES = [
+  { key: 'plurality_k2', shortLabel: 'PT2', label: 'Plurality top-2 (baseline)', optional: false },
   { key: 'approval-mean_k2', shortLabel: 'AT2', label: 'Approval top-2 (mean threshold)', optional: false },
   { key: 'plurality_k3', shortLabel: 'PT3', label: 'Plurality top-3', optional: false },
   { key: 'approval-mean_k3', shortLabel: 'AT3', label: 'Approval top-3 (mean threshold)', optional: true },
@@ -19,8 +21,9 @@ export const M_SERIES = [
 
 // Fixed per-series colors (not positional), same rationale as
 // metric-vs-k-chart.js's RULE_COLORS: toggling AT3 on/off never reshuffles
-// AT2/PT3's colors.
+// the other series' colors.
 const SERIES_COLORS = {
+  plurality_k2: '#dc2626',
   'approval-mean_k2': '#16a34a',
   plurality_k3: '#2563eb',
   'approval-mean_k3': '#d97706',
