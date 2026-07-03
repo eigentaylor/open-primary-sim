@@ -413,6 +413,11 @@ circle.candidate.eliminated {
   font-size: 11px;
 }
 
+.chart-subtitle {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
 .legend-label {
   fill: var(--text);
   font-size: 10px;

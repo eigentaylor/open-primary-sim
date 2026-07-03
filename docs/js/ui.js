@@ -195,7 +195,7 @@ function renderMetricCharts(sweepResults) {
     cell.className = 'metric-chart-cell';
     cell.title = 'Click to enlarge';
     grid.appendChild(cell);
-    renderMetricVsKChart(cell, meta, sweepResults, rules);
+    renderMetricVsKChart(cell, meta, sweepResults, rules, { mValue: state.config.M });
     cell.addEventListener('click', () => openMetricModal(meta));
   });
   el('metrics-legend').innerHTML = '';
@@ -206,7 +206,7 @@ function openMetricModal(meta) {
   const body = el('chart-modal-body');
   body.innerHTML = '';
   el('chart-modal-overlay').hidden = false; // must be visible before rendering so SVG getBBox() legend layout works
-  renderMetricVsKChart(body, meta, state.sweepResults, activeRules(), { height: 420 });
+  renderMetricVsKChart(body, meta, state.sweepResults, activeRules(), { height: 420, mValue: state.config.M });
 }
 
 function closeMetricModal() {

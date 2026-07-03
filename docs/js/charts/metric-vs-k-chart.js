@@ -33,8 +33,11 @@ const LEGEND_MAX_ROWS = 2;
 const LEGEND_BLOCK_HEIGHT = LEGEND_GAP + LEGEND_ROW_HEIGHT * LEGEND_MAX_ROWS;
 
 // sweepResults: output of runFullSweep(), keyed "rule_kK". `rules`: the
-// currently-active rule list (see ui.js's activeRules()).
-export function renderMetricVsKChart(container, metricMeta, sweepResults, rules, { height = 200 } = {}) {
+// currently-active rule list (see ui.js's activeRules()). `mValue`: the
+// primary candidate slate size (M) the sweep was run with, shown on the
+// chart since it materially changes the curves but isn't otherwise visible
+// once you're looking at an individual panel.
+export function renderMetricVsKChart(container, metricMeta, sweepResults, rules, { height = 200, mValue } = {}) {
   const baseMargin = { top: 16, right: 16, bottom: 32, left: 40 };
   const { g, innerWidth, innerHeight } = setupSvg(container, {
     height: height + LEGEND_BLOCK_HEIGHT,
@@ -96,6 +99,15 @@ export function renderMetricVsKChart(container, metricMeta, sweepResults, rules,
     .attr('x', 0)
     .attr('y', -4)
     .text(metricMeta.label + directionNote);
+
+  if (mValue != null) {
+    g.append('text')
+      .attr('class', 'chart-subtitle')
+      .attr('x', innerWidth)
+      .attr('y', -4)
+      .attr('text-anchor', 'end')
+      .text(`M = ${mValue}`);
+  }
 
   renderInChartLegend(g, rules, innerWidth, innerHeight);
 
