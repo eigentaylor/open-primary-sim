@@ -2,7 +2,7 @@
 // full sweeps, and feeds the chart modules. Owns the app's mutable UI state.
 
 import { loadStatesData, buildStateOptions } from './data-loader.js';
-import { DEFAULT_CONFIG, fullRulesAndKs, runIllustrativeDraw, RULES, K_VALUES } from './sweep.js';
+import { DEFAULT_CONFIG, fullRulesAndKs, runIllustrativeDraw, RULES, OPTIONAL_RULES, K_VALUES } from './sweep.js';
 import { renderDensityChart } from './charts/density-chart.js';
 import { renderDrawIllustration } from './charts/draw-illustration.js';
 import { renderMetricVsKChart, renderSharedLegend } from './charts/metric-vs-k-chart.js';
@@ -20,7 +20,12 @@ const state = {
   worker: null,
   requestId: 0,
   sweepResults: null,
+  usePav: false,
 };
+
+function activeRules() {
+  return state.usePav ? [...RULES, ...OPTIONAL_RULES] : RULES;
+}
 
 const el = (id) => document.getElementById(id);
 
@@ -68,8 +73,17 @@ function buildStateSelect() {
 function buildRuleKControls() {
   const ruleSelect = el('rule-select');
   ruleSelect.innerHTML = '';
-  const ruleLabels = { plurality: 'Plurality', 'approval-mean': 'Approval (mean threshold)', 'approval-tau': 'Approval (fixed τ)' };
-  RULES.forEach((r) => ruleSelect.appendChild(new Option(ruleLabels[r], r)));
+  const ruleLabels = {
+    plurality: 'Plurality',
+    'approval-mean': 'Approval (mean threshold)',
+    'approval-tau': 'Approval (fixed τ)',
+    pav: 'PAV (proportional approval)',
+  };
+  // The illustrative draw is a single iteration (cheap even for PAV's
+  // brute-force committee search), so it always offers every rule --
+  // independent of the "Use PAV" toggle, which only gates the expensive
+  // nSim-repeated full sweep below.
+  [...RULES, ...OPTIONAL_RULES].forEach((r) => ruleSelect.appendChild(new Option(ruleLabels[r], r)));
   ruleSelect.value = state.rule;
 
   const kSelect = el('k-select');
@@ -89,6 +103,7 @@ function syncParamLabels() {
   el('tau-value').textContent = state.config.tau.toFixed(2);
   el('nsim-slider').value = state.config.nSim;
   el('nsim-value').textContent = String(state.config.nSim);
+  el('use-pav-checkbox').checked = state.usePav;
 }
 
 // ---- Event wiring ---------------------------------------------------------
@@ -156,6 +171,11 @@ function wireControls() {
     state.config.nSim = Number(e.target.value);
     runAll();
   });
+
+  el('use-pav-checkbox').addEventListener('change', (e) => {
+    state.usePav = e.target.checked;
+    runAll();
+  });
 }
 
 // ---- Rendering -------------------------------------------------------------
@@ -169,22 +189,23 @@ function renderIllustrative() {
 function renderMetricCharts(sweepResults) {
   const grid = el('metrics-grid');
   grid.innerHTML = '';
+  const rules = activeRules();
   METRICS.forEach((meta) => {
     const cell = document.createElement('div');
     cell.className = 'metric-chart-cell';
     cell.title = 'Click to enlarge';
     grid.appendChild(cell);
-    renderMetricVsKChart(cell, meta, sweepResults);
+    renderMetricVsKChart(cell, meta, sweepResults, rules);
     cell.addEventListener('click', () => openMetricModal(meta));
   });
   el('metrics-legend').innerHTML = '';
-  renderSharedLegend(el('metrics-legend'));
+  renderSharedLegend(el('metrics-legend'), rules);
 }
 
 function openMetricModal(meta) {
   const body = el('chart-modal-body');
   body.innerHTML = '';
-  renderMetricVsKChart(body, meta, state.sweepResults, { height: 420 });
+  renderMetricVsKChart(body, meta, state.sweepResults, activeRules(), { height: 420 });
   el('chart-modal-overlay').hidden = false;
 }
 
@@ -223,7 +244,7 @@ function runAll() {
   state.worker.postMessage({
     requestId,
     stateParams,
-    rulesAndKs: fullRulesAndKs(),
+    rulesAndKs: fullRulesAndKs(state.usePav ? OPTIONAL_RULES : []),
     config: state.config,
     seed: state.seed,
   });

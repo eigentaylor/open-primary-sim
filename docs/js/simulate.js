@@ -4,7 +4,15 @@
 // that's sweep.js's job (see the VSE sums-then-divide-once requirement).
 
 import { sampleMixture, median, mixtureCdf } from './distributions.js';
-import { voterWeight, tallyForRule, rankCandidates, sumUtility, idealUtility } from './primary-rules.js';
+import {
+  voterWeight,
+  tallyForRule,
+  rankCandidates,
+  sumUtility,
+  idealUtility,
+  approvalTallyMean,
+  selectPAVCommittee,
+} from './primary-rules.js';
 
 // ---- Run-level setup (once per state selection; shared across all
 // {rule,k} configs in a sweep -- see plan Sec "Decisions resolved") --------
@@ -67,11 +75,24 @@ export function runIterationDetailed(ctx, rule, k, rng) {
   const candidates = new Float64Array(M);
   for (let j = 0; j < M; j++) candidates[j] = pool[candIdx[j]];
 
-  // Stage 3: primary tally (dispatches by rule) -> full M-length ranking.
-  const tally = tallyForRule(rule, pool, candidates, weights, xMedianPool, config.gamma, config.tau, rng);
+  // Stage 3: primary tally/committee selection (dispatches by rule).
   const utilitySum = sumUtility(pool, candidates, weights, xMedianPool, config.gamma);
-  const ranking = rankCandidates(tally, candidates, rng, utilitySum);
-  const finalists = ranking.slice(0, k);
+  let ranking, finalists;
+  if (rule === 'pav') {
+    // PAV picks the whole size-k committee at once -- it isn't a per-
+    // candidate tally sliced to top-k (see selectPAVCommittee's comment),
+    // so `ranking` here is only the individual-approval-tally ordering used
+    // for display/ccRank purposes; `finalists` come from the actual PAV
+    // committee, which need not be that ranking's top k.
+    const approvalTally = approvalTallyMean(pool, candidates, weights, xMedianPool, config.gamma);
+    ranking = rankCandidates(approvalTally, candidates, rng, utilitySum);
+    const committeeIdx = new Set(selectPAVCommittee(pool, candidates, weights, xMedianPool, config.gamma, k, rng));
+    finalists = ranking.filter((entry) => committeeIdx.has(entry.originalIndex));
+  } else {
+    const tally = tallyForRule(rule, pool, candidates, weights, xMedianPool, config.gamma, config.tau, rng);
+    ranking = rankCandidates(tally, candidates, rng, utilitySum);
+    finalists = ranking.slice(0, k);
+  }
 
   // Stage 4: winner = finalist closest to the pool median (paper's
   // condorcet.general, reused for all k -- deterministic given finalists).

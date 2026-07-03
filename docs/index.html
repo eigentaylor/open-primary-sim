@@ -58,6 +58,12 @@
         <label for="nsim-slider">Monte Carlo iterations per config <span id="nsim-value"></span></label>
         <input id="nsim-slider" type="range" min="50" max="1000" step="50" />
       </div>
+      <div class="control-group checkbox">
+        <label for="use-pav-checkbox">
+          <input id="use-pav-checkbox" type="checkbox" />
+          Use PAV (proportional approval) in sweeps — slow, off by default
+        </label>
+      </div>
 
       <div id="sweep-status" class="status"></div>
     </section>

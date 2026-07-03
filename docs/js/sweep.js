@@ -7,6 +7,11 @@ import { makeRng, hashSeed } from './distributions.js';
 import { setupRun, runIteration, runIterationDetailed } from './simulate.js';
 
 export const RULES = ['plurality', 'approval-mean', 'approval-tau'];
+// PAV is opt-in (see the UI's "Use PAV" toggle, default off): exact PAV
+// committee selection is combinatorially expensive (brute-force over every
+// size-k committee, see selectPAVCommittee), so it isn't included in every
+// sweep by default the way the other rules are.
+export const OPTIONAL_RULES = ['pav'];
 export const K_VALUES = [2, 3, 4, 5];
 
 export const DEFAULT_CONFIG = {
@@ -22,6 +27,8 @@ export const HEADLINE_CONFIGS = [
   { rule: 'plurality', k: 2, label: 'Plurality top-2 (baseline)' },
   { rule: 'approval-mean', k: 2, label: 'Approval top-2' },
   { rule: 'plurality', k: 3, label: 'Plurality top-3' },
+  { rule: 'pav', k: 3, label: 'PAV top-3' },
+  { rule: 'approval-mean', k: 3, label: 'Approval top-3' },
 ];
 
 const VSE_EPS = 1e-9;
@@ -109,13 +116,15 @@ export function runHeadlineSweep(stateParams, config, seed, onProgress) {
 }
 
 // Cartesian {rule,k} list for the full sweep (12 configs at RULES x K_VALUES
-// defaults). Exported so callers driving the Web Worker (ui.js) can request
-// exactly this list without duplicating the cartesian-product logic; the
-// headline 3-way comparison is always a subset of these same keys, so a
-// single full sweep covers both the headline table and the metric-vs-k charts.
-export function fullRulesAndKs() {
+// defaults, plus K_VALUES more per rule in `extraRules`). Exported so callers
+// driving the Web Worker (ui.js) can request exactly this list without
+// duplicating the cartesian-product logic; the headline 3-way comparison is
+// always a subset of these same keys, so a single full sweep covers both the
+// headline table and the metric-vs-k charts. `extraRules` lets callers
+// opt in to OPTIONAL_RULES (e.g. 'pav') without them running by default.
+export function fullRulesAndKs(extraRules = []) {
   const rulesAndKs = [];
-  for (const rule of RULES) for (const k of K_VALUES) rulesAndKs.push({ rule, k });
+  for (const rule of [...RULES, ...extraRules]) for (const k of K_VALUES) rulesAndKs.push({ rule, k });
   return rulesAndKs;
 }
 

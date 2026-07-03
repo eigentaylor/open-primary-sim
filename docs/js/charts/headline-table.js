@@ -1,8 +1,9 @@
 // Headline comparison table: Plurality-top2 (baseline) vs. Approval-top2 vs.
 // Plurality-top3, all 6 metrics, with %-vs-baseline (or percentage-point
-// difference at a ~0 baseline, see metrics-meta.js). Approval-top3 is an
-// optional 4th column, off by default. The rightmost "Δ" column subtracts
-// any two shown columns, chosen via the dropdowns (default PT3 − AT2).
+// difference at a ~0 baseline, see metrics-meta.js). PAV-top3 and
+// Approval-top3 are optional columns, off by default. The rightmost "Δ"
+// column subtracts any two shown columns, chosen via the dropdowns (default
+// PT3 − AT2).
 
 import { METRICS, formatDelta } from '../metrics-meta.js';
 
@@ -13,20 +14,31 @@ const COLUMNS = [
   { key: 'plurality_k2', label: 'Plurality top-2 (baseline)', shortLabel: 'PT2', optional: false },
   { key: 'approval-mean_k2', label: 'Approval top-2', shortLabel: 'AT2', optional: false },
   { key: 'plurality_k3', label: 'Plurality top-3', shortLabel: 'PT3', optional: false },
-  { key: 'approval-mean_k3', label: 'Approval top-3', shortLabel: 'AT3', optional: true },
+  { key: 'pav_k3', label: 'PAV top-3', shortLabel: 'PAVT3', optional: true, uiFlag: 'showPavTop3' },
+  { key: 'approval-mean_k3', label: 'Approval top-3', shortLabel: 'AT3', optional: true, uiFlag: 'showApprovalTop3' },
 ];
 
 // Local UI state for the optional column + delta-comparison pickers. Kept at
 // module scope so it survives across re-renders triggered by new sweep runs
 // (state/rule/k/parameter changes), not just across control interactions.
 const uiState = {
+  showPavTop3: false,
   showApprovalTop3: false,
   deltaLeftKey: 'plurality_k3',
   deltaRightKey: 'approval-mean_k2',
 };
 
-function activeColumns() {
-  return COLUMNS.filter((c) => !c.optional || uiState.showApprovalTop3);
+// pav_k3 is only present in headlineResults when the "Use PAV" sweep toggle
+// (see ui.js) is on -- if it's absent, treat the PAVT3 column as unavailable
+// regardless of the checkbox state, rather than showing a column of dashes.
+function isColumnAvailable(c, headlineResults) {
+  return headlineResults[c.key] != null;
+}
+
+function activeColumns(headlineResults) {
+  return COLUMNS.filter(
+    (c) => (!c.optional || uiState[c.uiFlag]) && isColumnAvailable(c, headlineResults)
+  );
 }
 
 function buildColumnSelect(columns, selectedKey, onChange) {
@@ -51,23 +63,31 @@ export function renderHeadlineTable(container, headlineResults) {
     const bar = document.createElement('div');
     bar.className = 'headline-controls';
 
-    const at3Label = document.createElement('label');
-    at3Label.className = 'headline-control';
-    const at3Checkbox = document.createElement('input');
-    at3Checkbox.type = 'checkbox';
-    at3Checkbox.checked = uiState.showApprovalTop3;
-    at3Checkbox.addEventListener('change', () => {
-      uiState.showApprovalTop3 = at3Checkbox.checked;
-      const stillActive = new Set(activeColumns().map((c) => c.key));
-      if (!stillActive.has(uiState.deltaLeftKey)) uiState.deltaLeftKey = 'plurality_k3';
-      if (!stillActive.has(uiState.deltaRightKey)) uiState.deltaRightKey = 'approval-mean_k2';
-      draw();
-    });
-    at3Label.appendChild(at3Checkbox);
-    at3Label.appendChild(document.createTextNode(' Show Approval top-3'));
-    bar.appendChild(at3Label);
+    function buildOptionalToggle(column, text) {
+      const available = isColumnAvailable(column, headlineResults);
+      const label = document.createElement('label');
+      label.className = 'headline-control';
+      if (!available) label.title = 'Enable "Use PAV" in the controls panel to compute this column';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = uiState[column.uiFlag];
+      checkbox.disabled = !available;
+      checkbox.addEventListener('change', () => {
+        uiState[column.uiFlag] = checkbox.checked;
+        const stillActive = new Set(activeColumns(headlineResults).map((c) => c.key));
+        if (!stillActive.has(uiState.deltaLeftKey)) uiState.deltaLeftKey = 'plurality_k3';
+        if (!stillActive.has(uiState.deltaRightKey)) uiState.deltaRightKey = 'approval-mean_k2';
+        draw();
+      });
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(text));
+      return label;
+    }
+    const columnByFlag = Object.fromEntries(COLUMNS.filter((c) => c.uiFlag).map((c) => [c.uiFlag, c]));
+    bar.appendChild(buildOptionalToggle(columnByFlag.showPavTop3, ' Show PAV top-3'));
+    bar.appendChild(buildOptionalToggle(columnByFlag.showApprovalTop3, ' Show Approval top-3'));
 
-    const cols = activeColumns();
+    const cols = activeColumns(headlineResults);
     const deltaGroup = document.createElement('label');
     deltaGroup.className = 'headline-control';
     deltaGroup.appendChild(document.createTextNode('Δ column: '));
@@ -88,7 +108,7 @@ export function renderHeadlineTable(container, headlineResults) {
   }
 
   function buildTable() {
-    const cols = activeColumns();
+    const cols = activeColumns(headlineResults);
     const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
     const deltaLeft = colByKey[uiState.deltaLeftKey] ? uiState.deltaLeftKey : cols[0].key;
     const deltaRight = colByKey[uiState.deltaRightKey] ? uiState.deltaRightKey : cols[0].key;

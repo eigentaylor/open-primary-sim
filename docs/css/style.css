@@ -69,6 +69,12 @@ main {
   gap: 8px;
 }
 
+.control-group.checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .control-group label {
   font-size: 0.82rem;
   color: var(--muted);
@@ -214,6 +220,16 @@ button:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  padding-left: 2px;
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 
 .legend-swatch {
