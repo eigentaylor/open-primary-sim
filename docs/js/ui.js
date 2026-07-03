@@ -205,8 +205,8 @@ function renderMetricCharts(sweepResults) {
 function openMetricModal(meta) {
   const body = el('chart-modal-body');
   body.innerHTML = '';
+  el('chart-modal-overlay').hidden = false; // must be visible before rendering so SVG getBBox() legend layout works
   renderMetricVsKChart(body, meta, state.sweepResults, activeRules(), { height: 420 });
-  el('chart-modal-overlay').hidden = false;
 }
 
 function closeMetricModal() {

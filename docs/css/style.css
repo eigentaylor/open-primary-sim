@@ -222,16 +222,6 @@ button:hover {
   gap: 6px;
 }
 
-.chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 4px;
-  padding-left: 2px;
-  font-size: 0.7rem;
-  color: var(--muted);
-}
-
 .legend-swatch {
   display: inline-block;
   width: 12px;
@@ -421,6 +411,11 @@ circle.candidate.eliminated {
 .chart-title {
   fill: var(--text);
   font-size: 11px;
+}
+
+.legend-label {
+  fill: var(--text);
+  font-size: 10px;
 }
 
 svg text {

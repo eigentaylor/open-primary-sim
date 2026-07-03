@@ -24,10 +24,22 @@ const RULE_COLORS = {
   pav: '#9333ea',
 };
 
+// Reserved below the x-axis for the in-chart legend, in viewBox units --
+// independent of on-screen size, since the legend is drawn as SVG (not
+// HTML) so it scales with the chart instead of overwhelming small multiples.
+const LEGEND_GAP = 10;
+const LEGEND_ROW_HEIGHT = 16;
+const LEGEND_MAX_ROWS = 2;
+const LEGEND_BLOCK_HEIGHT = LEGEND_GAP + LEGEND_ROW_HEIGHT * LEGEND_MAX_ROWS;
+
 // sweepResults: output of runFullSweep(), keyed "rule_kK". `rules`: the
 // currently-active rule list (see ui.js's activeRules()).
 export function renderMetricVsKChart(container, metricMeta, sweepResults, rules, { height = 200 } = {}) {
-  const { g, innerWidth, innerHeight } = setupSvg(container, { height, margin: { top: 16, right: 16, bottom: 32, left: 40 } });
+  const baseMargin = { top: 16, right: 16, bottom: 32, left: 40 };
+  const { g, innerWidth, innerHeight } = setupSvg(container, {
+    height: height + LEGEND_BLOCK_HEIGHT,
+    margin: { ...baseMargin, bottom: baseMargin.bottom + LEGEND_BLOCK_HEIGHT },
+  });
 
   const x = d3.scalePoint().domain(K_VALUES).range([0, innerWidth]).padding(0.5);
 
@@ -85,20 +97,46 @@ export function renderMetricVsKChart(container, metricMeta, sweepResults, rules,
     .attr('y', -4)
     .text(metricMeta.label + directionNote);
 
-  renderLegendItems(container, rules);
+  renderInChartLegend(g, rules, innerWidth, innerHeight);
 
   return { ruleLabels: RULE_LABELS };
 }
 
-function renderLegendItems(container, rules, className = 'chart-legend') {
-  const legend = d3.select(container).append('div').attr('class', className);
+// Wraps rule swatches/labels onto up to LEGEND_MAX_ROWS lines below the
+// x-axis, measuring each item's actual rendered width via getBBox() rather
+// than guessing at character widths.
+function renderInChartLegend(g, rules, innerWidth, innerHeight) {
+  const swatchRadius = 4;
+  const swatchTextGap = 5;
+  const itemGap = 14;
+  let x = 0;
+  let y = innerHeight + 32 + LEGEND_GAP;
+
+  rules.forEach((rule) => {
+    const item = g.append('g').attr('class', 'chart-legend-item');
+    item.append('circle').attr('r', swatchRadius).attr('fill', RULE_COLORS[rule]);
+    item
+      .append('text')
+      .attr('class', 'legend-label')
+      .attr('x', swatchRadius * 2 + swatchTextGap)
+      .attr('dominant-baseline', 'middle')
+      .text(RULE_LABELS[rule]);
+
+    const itemWidth = item.node().getBBox().width;
+    if (x > 0 && x + itemWidth > innerWidth) {
+      x = 0;
+      y += LEGEND_ROW_HEIGHT;
+    }
+    item.attr('transform', `translate(${x},${y})`);
+    x += itemWidth + itemGap;
+  });
+}
+
+export function renderSharedLegend(container, rules) {
+  const legend = d3.select(container).append('div').attr('class', 'shared-legend');
   rules.forEach((rule) => {
     const item = legend.append('span').attr('class', 'legend-item');
     item.append('span').attr('class', 'legend-swatch').style('background', RULE_COLORS[rule]);
     item.append('span').text(RULE_LABELS[rule]);
   });
-}
-
-export function renderSharedLegend(container, rules) {
-  renderLegendItems(container, rules, 'shared-legend');
 }
