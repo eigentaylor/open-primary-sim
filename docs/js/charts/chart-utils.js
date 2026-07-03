@@ -26,3 +26,23 @@ export function computeXDomain(stateParams) {
   const sigMax = Math.max(...stateParams.sigma);
   return [muMin - 4 * sigMax, muMax + 4 * sigMax];
 }
+
+// y-domain for the metric-vs-k/M small multiples. metricMeta.domain (if
+// set) is a fixed axis, used verbatim -- for probability-like metrics where
+// the absolute 0-1 scale is meaningful. Otherwise the axis fits the actual
+// spread of the plotted values (rather than always spanning down to 0 / up
+// to 1), so results that cluster together aren't squashed into a sliver of
+// the chart. metricMeta.yFloor pins the lower bound instead of the data min,
+// for metrics with a real floor the data might not reach (e.g. rank-based
+// metrics, which can't go below 1).
+export function computeYDomain(metricMeta, allVals) {
+  if (metricMeta.domain) return metricMeta.domain;
+  const vals = allVals.filter((v) => v != null);
+  const dataLo = Math.min(...vals);
+  const dataHi = Math.max(...vals);
+  const span = dataHi - dataLo || Math.abs(dataHi) || 1;
+  const pad = span * 0.08;
+  const lo = metricMeta.yFloor != null ? metricMeta.yFloor : dataLo - pad;
+  const hi = dataHi + pad;
+  return [lo, hi];
+}

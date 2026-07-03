@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, fullRulesAndKs, runIllustrativeDraw, RULES, OPTIONAL_RU
 import { renderDensityChart } from './charts/density-chart.js';
 import { renderDrawIllustration } from './charts/draw-illustration.js';
 import { renderMetricVsKChart, renderSharedLegend } from './charts/metric-vs-k-chart.js';
+import { renderMetricVsMChart, renderSharedLegend as renderMSharedLegend, M_SERIES } from './charts/metric-vs-m-chart.js';
 import { renderHeadlineTable } from './charts/headline-table.js';
 import { METRICS } from './metrics-meta.js';
 
@@ -20,11 +21,18 @@ const state = {
   worker: null,
   requestId: 0,
   sweepResults: null,
+  mSweepResults: null,
   usePav: false,
+  showAt3MSweep: true,
+  pendingKinds: new Set(),
 };
 
 function activeRules() {
   return state.usePav ? [...RULES, ...OPTIONAL_RULES] : RULES;
+}
+
+function activeMSeriesKeys() {
+  return M_SERIES.filter((s) => !s.optional || state.showAt3MSweep).map((s) => s.key);
 }
 
 const el = (id) => document.getElementById(id);
@@ -104,6 +112,7 @@ function syncParamLabels() {
   el('nsim-slider').value = state.config.nSim;
   el('nsim-value').textContent = String(state.config.nSim);
   el('use-pav-checkbox').checked = state.usePav;
+  el('show-at3-msweep-checkbox').checked = state.showAt3MSweep;
 }
 
 // ---- Event wiring ---------------------------------------------------------
@@ -176,6 +185,13 @@ function wireControls() {
     state.usePav = e.target.checked;
     runAll();
   });
+
+  // Display-only toggle -- the M-sweep always computes all 3 series, so this
+  // just re-renders from the already-computed results, no new sweep needed.
+  el('show-at3-msweep-checkbox').addEventListener('change', (e) => {
+    state.showAt3MSweep = e.target.checked;
+    renderMSweepCharts();
+  });
 }
 
 // ---- Rendering -------------------------------------------------------------
@@ -209,6 +225,30 @@ function openMetricModal(meta) {
   renderMetricVsKChart(body, meta, state.sweepResults, activeRules(), { height: 420, mValue: state.config.M });
 }
 
+function renderMSweepCharts() {
+  const grid = el('m-metrics-grid');
+  grid.innerHTML = '';
+  if (!state.mSweepResults) return;
+  const seriesKeys = activeMSeriesKeys();
+  METRICS.forEach((meta) => {
+    const cell = document.createElement('div');
+    cell.className = 'metric-chart-cell';
+    cell.title = 'Click to enlarge';
+    grid.appendChild(cell);
+    renderMetricVsMChart(cell, meta, state.mSweepResults, seriesKeys);
+    cell.addEventListener('click', () => openMSweepMetricModal(meta));
+  });
+  el('m-metrics-legend').innerHTML = '';
+  renderMSharedLegend(el('m-metrics-legend'), seriesKeys);
+}
+
+function openMSweepMetricModal(meta) {
+  const body = el('chart-modal-body');
+  body.innerHTML = '';
+  el('chart-modal-overlay').hidden = false; // must be visible before rendering so SVG getBBox() legend layout works
+  renderMetricVsMChart(body, meta, state.mSweepResults, activeMSeriesKeys(), { height: 420 });
+}
+
 function closeMetricModal() {
   el('chart-modal-overlay').hidden = true;
   el('chart-modal-body').innerHTML = '';
@@ -239,28 +279,49 @@ function runAll() {
 
   state.requestId += 1;
   const requestId = state.requestId;
+  // Both requests share this run's requestId, so a superseded runAll() call
+  // drops stale responses from either one; the worker processes them FIFO
+  // (one message queue), so the M-sweep's status text follows the full
+  // sweep's rather than interleaving with it.
+  state.pendingKinds = new Set(['full', 'mSweep']);
   setStatus(`Running sweep for ${stateParams.name}…`);
 
   state.worker.postMessage({
+    kind: 'full',
     requestId,
     stateParams,
     rulesAndKs: fullRulesAndKs(state.usePav ? OPTIONAL_RULES : []),
     config: state.config,
     seed: state.seed,
   });
+
+  state.worker.postMessage({
+    kind: 'mSweep',
+    requestId,
+    stateParams,
+    config: state.config,
+    seed: state.seed,
+  });
 }
 
 function handleWorkerMessage(event) {
-  const { type, requestId } = event.data;
+  const { type, requestId, kind } = event.data;
   if (requestId !== state.requestId) return; // stale response from a superseded request
 
   if (type === 'progress') {
-    setStatus(`Running sweep… (${event.data.done}/${event.data.total} configs)`);
+    const label = kind === 'mSweep' ? 'M-sweep' : 'sweep';
+    setStatus(`Running ${label}… (${event.data.done}/${event.data.total})`);
   } else if (type === 'done') {
-    state.sweepResults = event.data.results;
-    renderHeadlineTable(el('headline-table'), state.sweepResults);
-    renderMetricCharts(state.sweepResults);
-    setStatus('');
+    if (kind === 'mSweep') {
+      state.mSweepResults = event.data.results;
+      renderMSweepCharts();
+    } else {
+      state.sweepResults = event.data.results;
+      renderHeadlineTable(el('headline-table'), state.sweepResults);
+      renderMetricCharts(state.sweepResults);
+    }
+    state.pendingKinds.delete(kind);
+    if (state.pendingKinds.size === 0) setStatus('');
   } else if (type === 'error') {
     setStatus(`Simulation error: ${event.data.message}`, true);
   }

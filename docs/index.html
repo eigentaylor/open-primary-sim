@@ -64,6 +64,12 @@
           Use PAV (proportional approval) in sweeps — slow, off by default
         </label>
       </div>
+      <div class="control-group checkbox">
+        <label for="show-at3-msweep-checkbox">
+          <input id="show-at3-msweep-checkbox" type="checkbox" />
+          Show Approval top-3 in the M-sweep chart below
+        </label>
+      </div>
 
       <div id="sweep-status" class="status"></div>
     </section>
@@ -93,6 +99,17 @@
       </p>
       <div id="metrics-legend" class="metrics-legend"></div>
       <div id="metrics-grid" class="metrics-grid"></div>
+    </section>
+
+    <section class="chart-section">
+      <h2>Metrics as a function of M</h2>
+      <p class="section-note">
+        Each panel sweeps the primary candidate slate size M ∈ {5,10,15,20,25,30,40,50,61},
+        comparing approval top-2 vs. plurality top-3 (mean-threshold approval, not fixed τ),
+        with approval top-3 as an optional third line (see the checkbox in the controls panel).
+      </p>
+      <div id="m-metrics-legend" class="metrics-legend"></div>
+      <div id="m-metrics-grid" class="metrics-grid"></div>
     </section>
   </main>
 

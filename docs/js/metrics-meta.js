@@ -8,7 +8,7 @@ export const METRICS = [
     label: 'Runoff competitiveness',
     shortLabel: 'Cᵢⱼ (max)',
     format: (v) => (v == null ? '—' : v.toFixed(3)),
-    domain: [0, 1],
+    domain: null,
     isProbabilityLike: true,
     higherIsBetter: true,
   },
@@ -27,6 +27,7 @@ export const METRICS = [
     shortLabel: 'Cand. div.',
     format: (v) => (v == null ? '—' : v.toFixed(3)),
     domain: null,
+    yFloor: 0,
     isProbabilityLike: false,
     higherIsBetter: true,
   },
@@ -45,6 +46,10 @@ export const METRICS = [
     shortLabel: 'CC place',
     format: (v) => (v == null ? '—' : v.toFixed(2)),
     domain: null,
+    // Rank can't go below 1st place, so pin the axis floor there instead of
+    // letting it fit down to the data min (which would still be >1 and
+    // misleadingly suggest 1 is unreachable).
+    yFloor: 1,
     isProbabilityLike: false,
     // Lower rank = the consensus candidate finished closer to 1st place in
     // the primary tally, i.e. lower is better here (unlike every other metric).

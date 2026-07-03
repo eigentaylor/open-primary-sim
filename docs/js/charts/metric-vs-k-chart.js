@@ -4,7 +4,7 @@
 // once per metric (6 small multiples), rather than 6 bespoke chart functions.
 
 import { K_VALUES } from '../sweep.js';
-import { setupSvg } from './chart-utils.js';
+import { setupSvg, computeYDomain } from './chart-utils.js';
 
 const d3 = window.d3;
 
@@ -54,13 +54,8 @@ export function renderMetricVsKChart(container, metricMeta, sweepResults, rules,
     }),
   }));
 
-  let yDomain = metricMeta.domain;
-  if (!yDomain) {
-    const allVals = series.flatMap((s) => s.points.map((p) => p.value)).filter((v) => v != null);
-    const lo = Math.min(...allVals, 0);
-    const hi = Math.max(...allVals, 1);
-    yDomain = [lo, hi * 1.05];
-  }
+  const allVals = series.flatMap((s) => s.points.map((p) => p.value));
+  const yDomain = computeYDomain(metricMeta, allVals);
   const y = d3.scaleLinear().domain(yDomain).range([innerHeight, 0]).nice();
 
   g.append('g').attr('transform', `translate(0,${innerHeight})`).call(d3.axisBottom(x));

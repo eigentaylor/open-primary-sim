@@ -132,6 +132,37 @@ export function runFullSweep(stateParams, config, seed, onProgress) {
   return runSweep(stateParams, fullRulesAndKs(), config, seed, onProgress);
 }
 
+// ---- M-sweep: fixed {rule,k} comparison across primary slate size M --------
+//
+// Approval top-2 vs. plurality top-3 vs. approval top-3, mean-threshold
+// approval only (not the fixed-tau variant -- tau has no paper basis and
+// isn't part of this comparison), as M varies. Unlike RULES/K_VALUES above
+// (many rule/k combos at one fixed M), this sweeps M itself against a small
+// fixed set of rule/k combos, so it's a separate function rather than an
+// extra fullRulesAndKs() case.
+export const M_VALUES = [5, 10, 15, 20, 25, 30, 40, 50, 61];
+
+export const M_SWEEP_RULES_AND_KS = [
+  { rule: 'approval-mean', k: 2 },
+  { rule: 'plurality', k: 3 },
+  { rule: 'approval-mean', k: 3 },
+];
+
+// Returns { [M]: { [rule_kK]: aggregatedResult, ... }, ... }. Each M value
+// gets its own independent pool + RNG streams (hashSeed(seed, 'M<value>')),
+// same as runIllustrativeDraw's per-drawIndex independence -- so no single
+// point's randomness leaks into another as M changes.
+export function runMSweep(stateParams, config, seed, onProgress) {
+  const results = {};
+  for (let i = 0; i < M_VALUES.length; i++) {
+    const M = M_VALUES[i];
+    const mSeed = hashSeed(seed, `M${M}`);
+    results[M] = runSweep(stateParams, M_SWEEP_RULES_AND_KS, { ...config, M }, mSeed);
+    if (onProgress) onProgress({ done: i + 1, total: M_VALUES.length });
+  }
+  return results;
+}
+
 // One illustrative draw for the "current state/rule/k" chart: its own fresh
 // pool (independent of any sweep's shared pool) so a "redraw" button can
 // cheaply produce a new draw via drawIndex without perturbing sweep results.
