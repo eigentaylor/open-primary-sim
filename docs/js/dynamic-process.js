@@ -129,6 +129,113 @@ function classifyEquilibrium(finalRanking, k, tw, converged, finalT) {
   return { type, converged, finalT, nontrivialCount };
 }
 
+// Shared round-mechanics core for both public entry points below.
+// `full: true` (illustrative draw) builds the complete per-round detail
+// object via the caller-supplied `buildDetail(shareArr, ranking, finalists)`
+// on EVERY round (since the t-slider needs every step), preserving the
+// exact rng-consumption order a round always had (ranking ties -> general-
+// result ties -> metrics' random-candidate draw -> THEN the reconsideration
+// update). `full: false` (sweep hot loop) skips `buildDetail` on every
+// round -- only `ranking`/`finalists` (needed regardless, for the pivot/
+// viable-mask mechanics) are computed -- and the caller builds a detail
+// object ONCE from `lastRound` after the loop returns, since a sweep
+// iteration only ever uses the final round's outcome. This difference in
+// per-round rng consumption is fine: the sweep's `rng` is an independent
+// stream from the illustrative draw's, never required to reproduce it.
+function runRounds({ pool, weights, utilMatrix, N, M, candidates, k, rule, rng, lambda, eta, tw, utilitySum, full, buildDetail }) {
+  // Trivial case: no (k+1)-th candidate exists, so there's no pivot and no
+  // abandonment step can run -- report a single t=0 snapshot as converged.
+  if (M <= k) {
+    const shareArr = computeShare(rule, computeInitialChoice(utilMatrix, N, M, rng), weights, utilMatrix, N, M);
+    const { ranking, finalists } = buildRanking(shareArr, candidates, k, rng, utilitySum);
+    const round = full ? buildDetail(shareArr, ranking, finalists) : { ranking, finalists, shareArr };
+    return { steps: full ? [round] : null, lastRound: round, converged: true, finalT: 0, trivial: true };
+  }
+
+  const currentChoice = computeInitialChoice(utilMatrix, N, M, rng);
+  const tiedScratch = new Int32Array(M);
+  const rankOf = new Int32Array(M);
+  const viableMask = new Uint8Array(M);
+
+  const steps = full ? [] : null;
+  let lastRound = null;
+  let prevShareArr = null;
+  let converged = false;
+  let t = 0;
+
+  for (;;) {
+    const shareArr = computeShare(rule, currentChoice, weights, utilMatrix, N, M);
+    const { ranking, finalists } = buildRanking(shareArr, candidates, k, rng, utilitySum);
+    const round = full ? buildDetail(shareArr, ranking, finalists) : { ranking, finalists, shareArr };
+    if (full) steps.push(round);
+    lastRound = round;
+
+    if (prevShareArr) {
+      let maxDiff = 0;
+      for (let j = 0; j < M; j++) {
+        const d = Math.abs(shareArr[j] - prevShareArr[j]) / tw;
+        if (d > maxDiff) maxDiff = d;
+      }
+      if (maxDiff < CONVERGENCE_EPS) {
+        converged = true;
+        break;
+      }
+    }
+    if (t >= MAX_ITERATIONS) {
+      converged = false;
+      break;
+    }
+
+    // Round update t -> t+1, reading only from this round's own snapshot
+    // (`ranking`/`shareArr`) -- a synchronous update, applied together.
+    for (let idx = 0; idx < ranking.length; idx++) rankOf[ranking[idx].originalIndex] = idx + 1;
+    const pivotShare = ranking[k].tallyValue;
+    for (let j = 0; j < M; j++) viableMask[j] = shareArr[j] > pivotShare - eta ? 1 : 0;
+
+    const reconsiderCount = Math.round(lambda * N);
+    const reconsiderIdx = rng.choiceIndicesWithoutReplacement(N, reconsiderCount);
+    const towardMaskCache = new Map();
+
+    for (let idx = 0; idx < reconsiderIdx.length; idx++) {
+      const i = reconsiderIdx[idx];
+      const j = currentChoice[i];
+      const rank = rankOf[j];
+      if (rank <= k + 1) {
+        currentChoice[i] = argmaxAmongMask(utilMatrix, i, M, viableMask, rng, tiedScratch, j);
+      } else {
+        // s(j) > 0 always (see computeShare's header comment), and since
+        // shares are sorted descending and j's rank is > k+1, pivotShare
+        // (rank k+1's share) >= s(j) > 0 -- so this division is always safe.
+        const vr = shareArr[j] / pivotShare;
+        if (rng.uniform() < 1 - vr) {
+          let mask = towardMaskCache.get(j);
+          if (!mask) {
+            mask = new Uint8Array(M);
+            const threshold = shareArr[j] - eta;
+            for (let jj = 0; jj < M; jj++) mask[jj] = shareArr[jj] > threshold ? 1 : 0;
+            // Abandoning current choice j means picking the most preferred
+            // ALTERNATIVE -- j must be excluded from its own target set, or
+            // a voter whose current choice is still their sincere favorite
+            // (true at t=0, and thereafter for anyone who has never yet
+            // moved) would trivially "abandon" right back to itself, since
+            // nothing can out-rank a voter's own sincere-utility-maximizing
+            // pick within any set that still contains it. Without this
+            // exclusion the whole process is a permanent no-op.
+            mask[j] = 0;
+            towardMaskCache.set(j, mask);
+          }
+          currentChoice[i] = argmaxAmongMask(utilMatrix, i, M, mask, rng, tiedScratch, j);
+        }
+      }
+    }
+
+    prevShareArr = shareArr;
+    t += 1;
+  }
+
+  return { steps, lastRound, converged, finalT: t, trivial: false };
+}
+
 // Entry point, mirroring sweep.js's runIllustrativeDraw() shape/seeding so a
 // dynamic-mode run with the same seed/drawIndex/rule/k draws the IDENTICAL
 // candidate slate a static illustrative draw would (drawCandidates() is
@@ -149,109 +256,76 @@ export function runDynamicIllustrativeDraw(stateParams, config, seed, rule, k, d
   const utilMatrix = buildUtilityMatrix(pool, candidates, xMedianPool, config.gamma);
   const tw = totalWeight(ctx);
 
-  function buildStep(shareArr) {
-    const { ranking, finalists } = buildRanking(shareArr, candidates, k, processRng, utilitySum);
+  function buildDetail(shareArr, ranking, finalists) {
     const { winner, generalMatchups } = computeGeneralResult(pool, finalists, weights, xMedianPool, processRng);
     const ccRank = findCandidateRank(ranking, cc.originalIndex);
     const metrics = computeIterationMetrics({ pool, stateParams }, finalists, winner, cc, ccRank, candidates, processRng);
     return { candidates, ranking, finalists, winner, cc, ccRank, generalMatchups, metrics };
   }
 
-  // Trivial case: no (k+1)-th candidate exists, so there's no pivot and no
-  // abandonment step can run -- report a single t=0 snapshot as converged.
-  if (M <= k) {
-    const shareArr = computeShare(rule, computeInitialChoice(utilMatrix, N, M, processRng), weights, utilMatrix, N, M);
-    const step0 = buildStep(shareArr);
-    const letterMap = new Map(step0.finalists.map((f, i) => [f.originalIndex, FINALIST_LETTERS[i]]));
-    return {
-      ctx,
-      steps: [step0],
-      equilibrium: { type: 'trivial', converged: true, finalT: 0, nontrivialCount: null },
-      letterMap,
-    };
-  }
+  const { steps, lastRound, converged, finalT, trivial } = runRounds({
+    pool,
+    weights,
+    utilMatrix,
+    N,
+    M,
+    candidates,
+    k,
+    rule,
+    rng: processRng,
+    lambda,
+    eta,
+    tw,
+    utilitySum,
+    full: true,
+    buildDetail,
+  });
 
-  const currentChoice = computeInitialChoice(utilMatrix, N, M, processRng);
-  const tiedScratch = new Int32Array(M);
-  const rankOf = new Int32Array(M);
-  const viableMask = new Uint8Array(M);
-
-  const steps = [];
-  let prevShareArr = null;
-  let converged = false;
-  let t = 0;
-
-  for (;;) {
-    const shareArr = computeShare(rule, currentChoice, weights, utilMatrix, N, M);
-    const step = buildStep(shareArr);
-    steps.push(step);
-
-    if (prevShareArr) {
-      let maxDiff = 0;
-      for (let j = 0; j < M; j++) {
-        const d = Math.abs(shareArr[j] - prevShareArr[j]) / tw;
-        if (d > maxDiff) maxDiff = d;
-      }
-      if (maxDiff < CONVERGENCE_EPS) {
-        converged = true;
-        break;
-      }
-    }
-    if (t >= MAX_ITERATIONS) {
-      converged = false;
-      break;
-    }
-
-    // Round update t -> t+1, reading only from this round's own snapshot
-    // (`step.ranking`/`shareArr`) -- a synchronous update, applied together.
-    for (let idx = 0; idx < step.ranking.length; idx++) rankOf[step.ranking[idx].originalIndex] = idx + 1;
-    const pivotShare = step.ranking[k].tallyValue;
-    for (let j = 0; j < M; j++) viableMask[j] = shareArr[j] > pivotShare - eta ? 1 : 0;
-
-    const reconsiderCount = Math.round(lambda * N);
-    const reconsiderIdx = processRng.choiceIndicesWithoutReplacement(N, reconsiderCount);
-    const towardMaskCache = new Map();
-
-    for (let idx = 0; idx < reconsiderIdx.length; idx++) {
-      const i = reconsiderIdx[idx];
-      const j = currentChoice[i];
-      const rank = rankOf[j];
-      if (rank <= k + 1) {
-        currentChoice[i] = argmaxAmongMask(utilMatrix, i, M, viableMask, processRng, tiedScratch, j);
-      } else {
-        // s(j) > 0 always (see computeShare's header comment), and since
-        // shares are sorted descending and j's rank is > k+1, pivotShare
-        // (rank k+1's share) >= s(j) > 0 -- so this division is always safe.
-        const vr = shareArr[j] / pivotShare;
-        if (processRng.uniform() < 1 - vr) {
-          let mask = towardMaskCache.get(j);
-          if (!mask) {
-            mask = new Uint8Array(M);
-            const threshold = shareArr[j] - eta;
-            for (let jj = 0; jj < M; jj++) mask[jj] = shareArr[jj] > threshold ? 1 : 0;
-            // Abandoning current choice j means picking the most preferred
-            // ALTERNATIVE -- j must be excluded from its own target set, or
-            // a voter whose current choice is still their sincere favorite
-            // (true at t=0, and thereafter for anyone who has never yet
-            // moved) would trivially "abandon" right back to itself, since
-            // nothing can out-rank a voter's own sincere-utility-maximizing
-            // pick within any set that still contains it. Without this
-            // exclusion the whole process is a permanent no-op.
-            mask[j] = 0;
-            towardMaskCache.set(j, mask);
-          }
-          currentChoice[i] = argmaxAmongMask(utilMatrix, i, M, mask, processRng, tiedScratch, j);
-        }
-      }
-    }
-
-    prevShareArr = shareArr;
-    t += 1;
-  }
-
-  const finalStep = steps[steps.length - 1];
-  const equilibrium = classifyEquilibrium(finalStep.ranking, k, tw, converged, steps.length - 1);
-  const letterMap = new Map(finalStep.finalists.map((f, i) => [f.originalIndex, FINALIST_LETTERS[i]]));
+  const equilibrium = trivial
+    ? { type: 'trivial', converged: true, finalT: 0, nontrivialCount: null }
+    : classifyEquilibrium(lastRound.ranking, k, tw, converged, finalT);
+  const letterMap = new Map(lastRound.finalists.map((f, i) => [f.originalIndex, FINALIST_LETTERS[i]]));
 
   return { ctx, steps, equilibrium, letterMap };
+}
+
+// Sweep's hot-loop entry point for the two dynamic rule variants (see
+// sweep.js's DYNAMIC_RULES/DYNAMIC_BASE_RULE), mirroring simulate.js's
+// runIteration(ctx, rule, k, rng) contract: draws its own fresh candidate
+// slate from the given `ctx`/`rng` (same as the static path -- drawCandidates
+// is this rng stream's first consumption) and returns ONLY the final
+// round's metrics, discarding the trajectory (a sweep iteration only ever
+// aggregates the equilibrium outcome, never the intermediate steps).
+export function runDynamicIteration(ctx, rule, k, rng, { lambda, eta }) {
+  const { pool, xMedianPool, weights, stateParams, config } = ctx;
+  const N = pool.length;
+
+  const candidates = drawCandidates(pool, config.M, rng);
+  const M = candidates.length;
+
+  const cc = computeConsensusCandidate(candidates, xMedianPool, rng);
+  const utilitySum = sumUtility(pool, candidates, weights, xMedianPool, config.gamma);
+  const utilMatrix = buildUtilityMatrix(pool, candidates, xMedianPool, config.gamma);
+  const tw = totalWeight(ctx);
+
+  const { lastRound } = runRounds({
+    pool,
+    weights,
+    utilMatrix,
+    N,
+    M,
+    candidates,
+    k,
+    rule,
+    rng,
+    lambda,
+    eta,
+    tw,
+    utilitySum,
+    full: false,
+  });
+
+  const { winner, generalMatchups } = computeGeneralResult(pool, lastRound.finalists, weights, xMedianPool, rng);
+  const ccRank = findCandidateRank(lastRound.ranking, cc.originalIndex);
+  return computeIterationMetrics({ pool, stateParams }, lastRound.finalists, winner, cc, ccRank, candidates, rng);
 }

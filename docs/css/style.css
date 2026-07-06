@@ -249,6 +249,10 @@ button:hover {
   border-radius: 2px;
 }
 
+.headline-table-wrap {
+  overflow-x: auto;
+}
+
 .headline-controls {
   display: flex;
   flex-wrap: wrap;

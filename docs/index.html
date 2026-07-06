@@ -76,6 +76,12 @@
           Duvergerian abandonment (dynamic multi-round polling, illustrative draw only)
         </label>
       </div>
+      <div class="control-group checkbox">
+        <label for="dynamic-sweep-checkbox">
+          <input id="dynamic-sweep-checkbox" type="checkbox" />
+          Include dynamic-process variants in sweeps — slower, off by default
+        </label>
+      </div>
       <div class="control-group slider">
         <label for="lambda-slider">λ — reconsideration proportion per round <span id="lambda-value"></span></label>
         <input id="lambda-slider" type="range" min="0" max="1" step="0.05" />
@@ -124,7 +130,7 @@
         expected value of each metric over the Monte Carlo run, with change vs. the plurality
         top-2 baseline.
       </p>
-      <div id="headline-table"></div>
+      <div id="headline-table" class="headline-table-wrap"></div>
     </section>
 
     <section class="chart-section">

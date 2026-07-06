@@ -5,6 +5,7 @@
 
 import { makeRng, hashSeed } from './distributions.js';
 import { setupRun, runIteration, runIterationDetailed } from './simulate.js';
+import { runDynamicIteration } from './dynamic-process.js';
 
 export const RULES = ['plurality', 'approval-mean', 'approval-tau'];
 // PAV is opt-in (see the UI's "Use PAV" toggle, default off): exact PAV
@@ -12,6 +13,14 @@ export const RULES = ['plurality', 'approval-mean', 'approval-tau'];
 // size-k committee, see selectPAVCommittee), so it isn't included in every
 // sweep by default the way the other rules are.
 export const OPTIONAL_RULES = ['pav'];
+// Dynamic-abandonment-process variants of plurality/approval-mean (see
+// dynamic-process.js) -- also opt-in (see the UI's "Include dynamic-process
+// variants" toggle, default off), since running the process to convergence
+// nSim times per {rule,k} config is meaningfully slower than one static
+// tally. Keyed by "<base rule>-dynamic" so configKey()/chart/headline-table
+// lookups need no special-casing beyond the runOneConfig dispatch below.
+export const DYNAMIC_RULES = ['plurality-dynamic', 'approval-mean-dynamic'];
+const DYNAMIC_BASE_RULE = { 'plurality-dynamic': 'plurality', 'approval-mean-dynamic': 'approval-mean' };
 export const K_VALUES = [2, 3, 4, 5];
 
 export const DEFAULT_CONFIG = {
@@ -21,6 +30,8 @@ export const DEFAULT_CONFIG = {
   delta: 1.0, // extremist-turnout weight (1 = no bias)
   gamma: 0.0, // primary electability weight (0 = pure ideological distance)
   tau: 0.25, // approval fixed-threshold radius (exploratory, no paper basis)
+  lambda: 0.3, // dynamic-process reconsideration proportion per round -- shared with the illustrative draw
+  eta: 0.03, // dynamic-process viability tolerance -- shared with the illustrative draw
 };
 
 export const HEADLINE_CONFIGS = [
@@ -39,7 +50,12 @@ function configKey(rule, k) {
 
 // Runs one {rule,k} config for nSim iterations against a shared RunContext,
 // accumulating sums and dividing once (never per-iteration ratios).
+// Dynamic-abandonment rule variants (e.g. 'plurality-dynamic') dispatch to
+// runDynamicIteration() against their base rule instead of the static
+// one-shot runIteration() -- everything else about the aggregation is
+// identical, since both return the same 8-field metrics shape.
 function runOneConfig(ctx, rule, k, nSim, rng) {
+  const baseRule = DYNAMIC_BASE_RULE[rule];
   const sums = {
     maxC: 0,
     partyDiversity: 0,
@@ -51,7 +67,9 @@ function runOneConfig(ctx, rule, k, nSim, rng) {
     ccUtility: 0,
   };
   for (let i = 0; i < nSim; i++) {
-    const m = runIteration(ctx, rule, k, rng);
+    const m = baseRule
+      ? runDynamicIteration(ctx, baseRule, k, rng, { lambda: ctx.config.lambda, eta: ctx.config.eta })
+      : runIteration(ctx, rule, k, rng);
     sums.maxC += m.maxC;
     sums.partyDiversity += m.partyDiversity;
     sums.candidateDiversity += m.candidateDiversity;
@@ -140,7 +158,7 @@ export function runFullSweep(stateParams, config, seed, onProgress) {
 // Unlike RULES/K_VALUES above (many rule/k combos at one fixed M), this
 // sweeps M itself against a small fixed set of rule/k combos, so it's a
 // separate function rather than an extra fullRulesAndKs() case.
-export const M_VALUES = [5, 10, 15, 20, 25, 30, 60];
+export const M_VALUES = [5, 10, 15, 20, 25];
 
 export const M_SWEEP_RULES_AND_KS = [
   { rule: 'plurality', k: 2 },

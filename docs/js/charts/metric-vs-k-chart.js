@@ -13,15 +13,21 @@ const RULE_LABELS = {
   'approval-mean': 'Approval (mean threshold)',
   'approval-tau': 'Approval (fixed τ)',
   pav: 'PAV (proportional approval)',
+  'plurality-dynamic': 'Plurality (dynamic)',
+  'approval-mean-dynamic': 'Approval mean (dynamic)',
 };
 
-// Fixed per-rule colors (not positional) so toggling PAV on/off never
-// reshuffles the other rules' colors.
+// Fixed per-rule colors (not positional) so toggling PAV/dynamic variants
+// on/off never reshuffles the other rules' colors. The dynamic variants use
+// a lighter tint of their base rule's color so they read as "related to,
+// but distinct from" the static tally.
 const RULE_COLORS = {
   plurality: '#2563eb',
   'approval-mean': '#16a34a',
   'approval-tau': '#d97706',
   pav: '#9333ea',
+  'plurality-dynamic': '#93c5fd',
+  'approval-mean-dynamic': '#86efac',
 };
 
 // Reserved below the x-axis for the in-chart legend, in viewBox units --

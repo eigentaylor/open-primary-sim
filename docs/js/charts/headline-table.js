@@ -9,13 +9,63 @@ import { METRICS, formatDelta } from '../metrics-meta.js';
 
 // Fixed catalog of columns this table knows how to show. `key` matches the
 // "rule_kK" keys produced by runSweep/runFullSweep. Order here is display
-// order; the first entry is always the baseline and is never hidden.
+// order; the first entry is always the baseline and is never hidden. Each
+// rule's dynamic-abandonment-process sibling (see dynamic-process.js) sits
+// directly adjacent to its static column, rather than grouped at the end,
+// so the two are easy to compare side by side. `tooltip` is the disabled-
+// checkbox hover text shown when a column is unavailable (see
+// buildOptionalToggle below); columns without their own checkbox (the
+// non-optional ones) don't need it.
 const COLUMNS = [
   { key: 'plurality_k2', label: 'Plurality top-2 (baseline)', shortLabel: 'PT2', optional: false },
+  {
+    key: 'plurality-dynamic_k2',
+    label: 'Plurality top-2 (dynamic)',
+    shortLabel: 'PT2-D',
+    optional: true,
+    uiFlag: 'showDynamicColumns',
+    tooltip: 'Enable "Include dynamic-process variants" in the controls panel to compute this column',
+  },
   { key: 'approval-mean_k2', label: 'Approval top-2', shortLabel: 'AT2', optional: false },
+  {
+    key: 'approval-mean-dynamic_k2',
+    label: 'Approval top-2 (dynamic)',
+    shortLabel: 'AT2-D',
+    optional: true,
+    uiFlag: 'showDynamicColumns',
+    tooltip: 'Enable "Include dynamic-process variants" in the controls panel to compute this column',
+  },
   { key: 'plurality_k3', label: 'Plurality top-3', shortLabel: 'PT3', optional: false },
-  { key: 'pav_k3', label: 'PAV top-3', shortLabel: 'PAVT3', optional: true, uiFlag: 'showPavTop3' },
-  { key: 'approval-mean_k3', label: 'Approval top-3', shortLabel: 'AT3', optional: true, uiFlag: 'showApprovalTop3' },
+  {
+    key: 'plurality-dynamic_k3',
+    label: 'Plurality top-3 (dynamic)',
+    shortLabel: 'PT3-D',
+    optional: true,
+    uiFlag: 'showDynamicColumns',
+    tooltip: 'Enable "Include dynamic-process variants" in the controls panel to compute this column',
+  },
+  {
+    key: 'pav_k3',
+    label: 'PAV top-3',
+    shortLabel: 'PAVT3',
+    optional: true,
+    uiFlag: 'showPavTop3',
+    tooltip: 'Enable "Use PAV" in the controls panel to compute this column',
+  },
+  { key: 'approval-mean_k3', label: 'Approval top-3', shortLabel: 'AT3', optional: true, uiFlag: 'showApprovalTop3', tooltip: null },
+  {
+    // Reuses the SAME uiFlag as static AT3 (see the user's request: one
+    // checkbox toggles both) -- its own visibility still independently
+    // depends on isColumnAvailable() below, so checking "Show Approval
+    // top-3" alone doesn't show this column until the dynamic-sweep
+    // checkbox has ALSO been on for a sweep run.
+    key: 'approval-mean-dynamic_k3',
+    label: 'Approval top-3 (dynamic)',
+    shortLabel: 'AT3-D',
+    optional: true,
+    uiFlag: 'showApprovalTop3',
+    tooltip: 'Enable "Include dynamic-process variants" in the controls panel (in addition to Show Approval top-3) to compute this column',
+  },
 ];
 
 // Local UI state for the optional column + delta-comparison pickers. Kept at
@@ -24,13 +74,16 @@ const COLUMNS = [
 const uiState = {
   showPavTop3: false,
   showApprovalTop3: false,
+  showDynamicColumns: false,
   deltaLeftKey: 'plurality_k3',
   deltaRightKey: 'approval-mean_k2',
 };
 
-// pav_k3 is only present in headlineResults when the "Use PAV" sweep toggle
-// (see ui.js) is on -- if it's absent, treat the PAVT3 column as unavailable
-// regardless of the checkbox state, rather than showing a column of dashes.
+// A column's underlying rule/k may not have been computed at all -- e.g.
+// pav_k3 only exists when the "Use PAV" sweep toggle was on, and the four
+// "-dynamic" keys only exist when "Include dynamic-process variants" was on
+// -- if absent, treat the column as unavailable regardless of checkbox
+// state, rather than showing a column of dashes.
 function isColumnAvailable(c, headlineResults) {
   return headlineResults[c.key] != null;
 }
@@ -67,7 +120,7 @@ export function renderHeadlineTable(container, headlineResults) {
       const available = isColumnAvailable(column, headlineResults);
       const label = document.createElement('label');
       label.className = 'headline-control';
-      if (!available) label.title = 'Enable "Use PAV" in the controls panel to compute this column';
+      if (!available && column.tooltip) label.title = column.tooltip;
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = uiState[column.uiFlag];
@@ -83,9 +136,19 @@ export function renderHeadlineTable(container, headlineResults) {
       label.appendChild(document.createTextNode(text));
       return label;
     }
-    const columnByFlag = Object.fromEntries(COLUMNS.filter((c) => c.uiFlag).map((c) => [c.uiFlag, c]));
+    // Keep the FIRST column per uiFlag (not last) -- AT3-D shares
+    // showApprovalTop3 with (and appears after) static AT3, so a last-wins
+    // map would make this checkbox's disabled/tooltip state track AT3-D's
+    // availability instead of AT3's, incorrectly disabling a checkbox that
+    // should always be usable (static AT3 is always computable; only the
+    // paired AT3-D depends on the dynamic-sweep toggle).
+    const columnByFlag = COLUMNS.reduce((acc, c) => {
+      if (c.uiFlag && !(c.uiFlag in acc)) acc[c.uiFlag] = c;
+      return acc;
+    }, {});
     bar.appendChild(buildOptionalToggle(columnByFlag.showPavTop3, ' Show PAV top-3'));
     bar.appendChild(buildOptionalToggle(columnByFlag.showApprovalTop3, ' Show Approval top-3'));
+    bar.appendChild(buildOptionalToggle(columnByFlag.showDynamicColumns, ' Show dynamic-process columns (PT2-D/AT2-D/PT3-D)'));
 
     const cols = activeColumns(headlineResults);
     const deltaGroup = document.createElement('label');
@@ -121,7 +184,8 @@ export function renderHeadlineTable(container, headlineResults) {
     headRow.insertCell().textContent = 'Metric';
     cols.forEach((c) => {
       const th = document.createElement('th');
-      th.textContent = c.label;
+      th.textContent = c.shortLabel;
+      th.title = c.label;
       headRow.appendChild(th);
     });
     const deltaHeadCell = document.createElement('th');

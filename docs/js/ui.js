@@ -2,7 +2,7 @@
 // full sweeps, and feeds the chart modules. Owns the app's mutable UI state.
 
 import { loadStatesData, buildStateOptions } from './data-loader.js';
-import { DEFAULT_CONFIG, fullRulesAndKs, runIllustrativeDraw, RULES, OPTIONAL_RULES, K_VALUES } from './sweep.js';
+import { DEFAULT_CONFIG, fullRulesAndKs, runIllustrativeDraw, RULES, OPTIONAL_RULES, DYNAMIC_RULES, K_VALUES } from './sweep.js';
 import { runDynamicIllustrativeDraw } from './dynamic-process.js';
 import { renderDensityChart } from './charts/density-chart.js';
 import { renderDrawMetrics } from './charts/draw-illustration.js';
@@ -46,15 +46,18 @@ const state = {
   drawCtx: null,
   pendingKinds: new Set(),
   dynamicMode: false,
-  lambda: 0.3,
-  eta: 0.03,
   t: 0,
   dynamicResult: null, // { ctx, steps, equilibrium, letterMap } when dynamicMode is on, else null
   letterMap: null, // mirrors dynamicResult.letterMap; null in static mode
+  useDynamicSweep: false, // separate from dynamicMode -- gates dynamic-process variants in the k-sweep/headline table, not the illustrative draw
 };
 
+// lambda/eta live in state.config (see DEFAULT_CONFIG in sweep.js) rather
+// than as separate top-level state fields, since they're now shared between
+// the illustrative draw AND the dynamic-sweep variants below.
+
 function activeRules() {
-  return state.usePav ? [...RULES, ...OPTIONAL_RULES] : RULES;
+  return [...RULES, ...(state.usePav ? OPTIONAL_RULES : []), ...(state.useDynamicSweep ? DYNAMIC_RULES : [])];
 }
 
 function activeMSeriesKeys() {
@@ -143,10 +146,11 @@ function syncParamLabels() {
   el('use-pav-checkbox').checked = state.usePav;
   el('show-at3-msweep-checkbox').checked = state.showAt3MSweep;
   el('dynamic-mode-checkbox').checked = state.dynamicMode;
-  el('lambda-slider').value = state.lambda;
-  el('lambda-value').textContent = state.lambda.toFixed(2);
-  el('eta-slider').value = state.eta;
-  el('eta-value').textContent = state.eta.toFixed(3);
+  el('lambda-slider').value = state.config.lambda;
+  el('lambda-value').textContent = state.config.lambda.toFixed(2);
+  el('eta-slider').value = state.config.eta;
+  el('eta-value').textContent = state.config.eta.toFixed(3);
+  el('dynamic-sweep-checkbox').checked = state.useDynamicSweep;
 }
 
 // ---- Event wiring ---------------------------------------------------------
@@ -230,7 +234,7 @@ function wireControls() {
     el('lambda-value').textContent = Number(e.target.value).toFixed(2);
   });
   el('lambda-slider').addEventListener('change', (e) => {
-    state.lambda = Number(e.target.value);
+    state.config.lambda = Number(e.target.value);
     runAll();
   });
 
@@ -238,7 +242,12 @@ function wireControls() {
     el('eta-value').textContent = Number(e.target.value).toFixed(3);
   });
   el('eta-slider').addEventListener('change', (e) => {
-    state.eta = Number(e.target.value);
+    state.config.eta = Number(e.target.value);
+    runAll();
+  });
+
+  el('dynamic-sweep-checkbox').addEventListener('change', (e) => {
+    state.useDynamicSweep = e.target.checked;
     runAll();
   });
 
@@ -289,8 +298,8 @@ function renderIllustrative() {
 
   if (state.dynamicMode) {
     const result = runDynamicIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex, {
-      lambda: state.lambda,
-      eta: state.eta,
+      lambda: state.config.lambda,
+      eta: state.config.eta,
     });
     state.dynamicResult = result;
     state.drawCtx = result.ctx;
@@ -299,7 +308,12 @@ function renderIllustrative() {
     el('t-slider').max = String(result.steps.length - 1);
     el('t-slider').value = String(state.t);
     el('t-value').textContent = String(state.t);
-    renderEquilibriumBadge(result.equilibrium);
+    // The equilibrium classifier's nontrivial-share threshold doesn't map
+    // cleanly onto approval-mean's ballot structure (approval tallies can
+    // sum >100%, so "share of total weight" isn't the same kind of
+    // quantity) -- hide the badge there until the classifier is revisited,
+    // rather than show a label that isn't meaningful yet.
+    renderEquilibriumBadge(state.rule === 'approval-mean' ? null : result.equilibrium);
     renderMetricsVsTCharts(result.steps);
   } else {
     const { ctx, detail } = runIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex);
@@ -457,7 +471,10 @@ function runAll() {
     kind: 'full',
     requestId,
     stateParams,
-    rulesAndKs: fullRulesAndKs(state.usePav ? OPTIONAL_RULES : []),
+    rulesAndKs: fullRulesAndKs([
+      ...(state.usePav ? OPTIONAL_RULES : []),
+      ...(state.useDynamicSweep ? DYNAMIC_RULES : []),
+    ]),
     config: state.config,
     seed: state.seed,
   });
