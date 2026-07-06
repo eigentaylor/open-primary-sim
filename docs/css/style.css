@@ -507,6 +507,14 @@ table.results-table th {
   opacity: 0.7;
 }
 
+.results-swatch.party-left {
+  background: var(--party-left);
+}
+
+.results-swatch.party-right {
+  background: var(--party-right);
+}
+
 .results-badge {
   display: inline-block;
   margin-left: 6px;
@@ -606,13 +614,20 @@ body.has-dynamic-footer {
   color: var(--muted);
 }
 
+.vote-share-bar.party-left {
+  fill: var(--party-left);
+}
+
+.vote-share-bar.party-right {
+  fill: var(--party-right);
+}
+
 .vote-share-bar.bar-finalist {
-  fill: var(--finalist);
+  opacity: 1;
 }
 
 .vote-share-bar.bar-eliminated {
-  fill: var(--eliminated);
-  opacity: 0.7;
+  opacity: 0.45;
 }
 
 .vote-share-bar.bar-cc {
@@ -624,6 +639,15 @@ body.has-dynamic-footer {
 .vote-share-bar.bar-winner {
   stroke: var(--winner);
   stroke-width: 3;
+}
+
+/* White halo drawn under the winner's colored stroke so it stays visible
+   even when the winner's bar is party-right (same red as --winner). */
+.vote-share-bar-halo {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 6;
+  opacity: 0.9;
 }
 
 .hist-label {

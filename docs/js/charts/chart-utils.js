@@ -27,6 +27,18 @@ export function computeXDomain(stateParams) {
   return [muMin - 4 * sigMax, muMax + 4 * sigMax];
 }
 
+// Per-candidate party color: which side of the state's left/right divide
+// (x=0 -- the same boundary partyDiversity/density-chart's party-line check)
+// a candidate sits on. A stand-in for D/R, not a real party label -- lets
+// same-side candidates read as a visual cluster (e.g. consolidation behind
+// a frontrunner in the vote-share histogram).
+export function partyClass(candidateX) {
+  return candidateX < 0 ? 'party-left' : 'party-right';
+}
+
+export const PARTY_NOTE =
+  "Color shows which side of the state's left/right divide (x=0) each candidate falls on -- blue = left, red = right (a stand-in for D/R, not a literal party label).";
+
 // y-domain for the metric-vs-k/M small multiples. metricMeta.domain (if
 // set) is a fixed axis, used verbatim -- for probability-like metrics where
 // the absolute 0-1 scale is meaningful. Otherwise the axis fits the actual

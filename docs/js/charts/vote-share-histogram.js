@@ -8,19 +8,22 @@
 // abandonment/clustering happen over time.
 
 import { totalWeight } from '../simulate.js';
-import { setupSvg } from './chart-utils.js';
+import { setupSvg, partyClass, PARTY_NOTE } from './chart-utils.js';
 
 const d3 = window.d3;
 
 const FINALIST_LETTERS = 'ABCDE';
 
-// A bar always gets exactly one FILL class (finalist/eliminated), plus
-// optional CC/winner STROKE overlays -- mirrors density-chart.js's
-// convention of a finalist/eliminated circle fill with separate cc-marker/
-// winner-marker overlays, rather than one mutually-exclusive role.
+// A bar's FILL is the candidate's party (left/right of x=0, see
+// chart-utils.js's partyClass) so consolidation behind a frontrunner reads
+// as a same-color cluster; finalist/eliminated is now an opacity overlay
+// (full vs faded) instead of its own hue, plus optional CC/winner STROKE
+// overlays -- mirrors density-chart.js's convention of a base fill with
+// separate cc-marker/winner-marker overlays, rather than one mutually-
+// exclusive role.
 function barClasses(entry, detail) {
   const isFinalist = detail.finalists.some((f) => f.originalIndex === entry.originalIndex);
-  const classes = [isFinalist ? 'bar-finalist' : 'bar-eliminated'];
+  const classes = [isFinalist ? 'bar-finalist' : 'bar-eliminated', partyClass(entry.candidateX)];
   if (entry.originalIndex === detail.cc.originalIndex) classes.push('bar-cc');
   if (entry.originalIndex === detail.winner.originalIndex) classes.push('bar-winner');
   return classes.join(' ');
@@ -65,6 +68,18 @@ export function renderVoteShareHistogram(container, detail, ctx, letterMap = nul
     .call(d3.axisBottom(x).tickValues(tickValues));
   g.append('g').call(d3.axisLeft(y).ticks(5).tickFormat((d) => `${d}%`));
 
+  // Winner halo: drawn before (under) the main bars so its white outline
+  // sits behind the winner's own colored stroke -- keeps the winner visible
+  // even when their bar is party-right (same red as --winner).
+  g.selectAll('rect.vote-share-bar-halo')
+    .data(rows.filter((d) => d.classes.includes('bar-winner')))
+    .join('rect')
+    .attr('class', 'vote-share-bar-halo')
+    .attr('x', (d) => x(d.place))
+    .attr('y', (d) => y(d.pct))
+    .attr('width', x.bandwidth())
+    .attr('height', (d) => innerHeight - y(d.pct));
+
   const bars = g
     .selectAll('rect.vote-share-bar')
     .data(rows)
@@ -86,4 +101,6 @@ export function renderVoteShareHistogram(container, detail, ctx, letterMap = nul
     .text((d) => d.letter);
 
   g.append('text').attr('class', 'chart-title').attr('x', 0).attr('y', -10).text('Vote shares by rank (sorted descending)');
+
+  d3.select(container).append('p').attr('class', 'results-note').text(PARTY_NOTE);
 }

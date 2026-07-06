@@ -15,6 +15,7 @@
 // called out under the table when the active rule is approval-based.
 
 import { totalWeight } from '../simulate.js';
+import { partyClass, PARTY_NOTE } from './chart-utils.js';
 
 const d3 = window.d3;
 
@@ -59,7 +60,9 @@ function rowClass(d) {
 function candidateCellHtml(d) {
   const swatchClass = d.advanced ? 'legend-finalist' : 'legend-eliminated';
   const letterPrefix = d.letter ? `<strong>${d.letter}</strong> &middot; ` : '';
-  let html = `<span class="results-swatch ${swatchClass}"></span>${letterPrefix}x = ${d.candidateX.toFixed(3)}`;
+  let html =
+    `<span class="results-swatch ${partyClass(d.candidateX)}"></span>` +
+    `<span class="results-swatch ${swatchClass}"></span>${letterPrefix}x = ${d.candidateX.toFixed(3)}`;
   if (d.advanced) html += ' <span class="results-badge advanced-badge">Advances</span>';
   if (d.isCC) html += ' <span class="results-badge cc-badge">CC</span>';
   if (d.isWinner) html += ' <span class="results-badge winner-badge">Winner</span>';
@@ -139,7 +142,9 @@ function matchupSideHtml(side) {
   // whose current-t finalists aren't a subset of the FINAL round's lettered
   // finalists -- fall back to the candidate's position instead of "null".
   const letterPrefix = side.letter ? `<strong>${side.letter}</strong> &middot; ` : '';
-  let html = `<span class="results-swatch legend-finalist"></span>${letterPrefix}x = ${side.candidateX.toFixed(3)}`;
+  let html =
+    `<span class="results-swatch ${partyClass(side.candidateX)}"></span>` +
+    `<span class="results-swatch legend-finalist"></span>${letterPrefix}x = ${side.candidateX.toFixed(3)}`;
   if (side.isCC) html += ' <span class="results-badge cc-badge">CC</span>';
   if (side.isOverallWinner) html += ' <span class="results-badge winner-badge">Winner</span>';
   return html;
@@ -200,4 +205,6 @@ export function renderElectionResults(container, detail, ctx, view, rule, letter
 
   if (view === 'general') renderGeneralMatchups(wrap, detail, ctx, letterMap);
   else renderPrimaryTable(wrap, detail, ctx, rule, letterMap);
+
+  wrap.append('p').attr('class', 'results-note').text(PARTY_NOTE);
 }
