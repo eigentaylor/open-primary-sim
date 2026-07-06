@@ -70,15 +70,51 @@
           Show Approval top-3 in the M-sweep chart below
         </label>
       </div>
+      <div class="control-group checkbox">
+        <label for="dynamic-mode-checkbox">
+          <input id="dynamic-mode-checkbox" type="checkbox" />
+          Duvergerian abandonment (dynamic multi-round polling, illustrative draw only)
+        </label>
+      </div>
+      <div class="control-group slider">
+        <label for="lambda-slider">λ — reconsideration proportion per round <span id="lambda-value"></span></label>
+        <input id="lambda-slider" type="range" min="0" max="1" step="0.05" />
+      </div>
+      <div class="control-group slider">
+        <label for="eta-slider">η — viability tolerance <span id="eta-value"></span></label>
+        <input id="eta-slider" type="range" min="0" max="0.1" step="0.005" />
+      </div>
 
       <div id="sweep-status" class="status"></div>
     </section>
 
     <section class="chart-section">
-      <h2>Voter distribution</h2>
+      <h2>Voter distribution &amp; primary draw</h2>
+      <p class="section-note">
+        Candidates are plotted directly on the voter-distribution curve: green = advanced to
+        the general, gray = eliminated in the primary, ring = general-election winner, diamond
+        = consensus candidate. The bar at x=0 shows the state's left/right voter split.
+      </p>
       <div id="density-chart" class="chart-container"></div>
-      <h2>Illustrative primary draw</h2>
       <div id="draw-illustration" class="chart-container"></div>
+
+      <h2>Election results</h2>
+      <div class="control-group buttons results-toggle">
+        <button id="results-view-primary-btn" type="button" class="toggle-btn active">Primary</button>
+        <button id="results-view-general-btn" type="button" class="toggle-btn">General</button>
+        <button id="results-view-histogram-btn" type="button" class="toggle-btn">Histogram</button>
+      </div>
+      <div id="election-results" class="chart-container"></div>
+    </section>
+
+    <section class="chart-section" id="t-metrics-section" hidden>
+      <h2>Metrics as a function of t (dynamic abandonment process)</h2>
+      <p class="section-note">
+        Each panel shows one metric's value at every round t of the Duvergerian-abandonment process
+        for the current illustrative draw, from the initial sincere choices (t=0) through convergence
+        or the iteration cap.
+      </p>
+      <div id="t-metrics-grid" class="metrics-grid"></div>
     </section>
 
     <section class="chart-section">
@@ -128,6 +164,12 @@
       variants and 6 outcome metrics are extensions not in the source paper.
     </p>
   </footer>
+
+  <div id="dynamic-step-panel" class="dynamic-footer-bar" hidden>
+    <label for="t-slider">t — process round <span id="t-value">0</span></label>
+    <input id="t-slider" type="range" min="0" max="0" step="1" value="0" />
+    <span id="equilibrium-badge" class="equilibrium-badge"></span>
+  </div>
 
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script type="module" src="./js/main.js"></script>

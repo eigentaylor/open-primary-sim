@@ -3,12 +3,29 @@
 
 import { loadStatesData, buildStateOptions } from './data-loader.js';
 import { DEFAULT_CONFIG, fullRulesAndKs, runIllustrativeDraw, RULES, OPTIONAL_RULES, K_VALUES } from './sweep.js';
+import { runDynamicIllustrativeDraw } from './dynamic-process.js';
 import { renderDensityChart } from './charts/density-chart.js';
-import { renderDrawIllustration } from './charts/draw-illustration.js';
+import { renderDrawMetrics } from './charts/draw-illustration.js';
+import { renderElectionResults } from './charts/election-results.js';
+import { renderVoteShareHistogram } from './charts/vote-share-histogram.js';
+import { renderMetricVsTChart } from './charts/metric-vs-t-chart.js';
 import { renderMetricVsKChart, renderSharedLegend } from './charts/metric-vs-k-chart.js';
 import { renderMetricVsMChart, renderSharedLegend as renderMSharedLegend, M_SERIES } from './charts/metric-vs-m-chart.js';
 import { renderHeadlineTable } from './charts/headline-table.js';
 import { METRICS } from './metrics-meta.js';
+
+// Rule dropdown labels, shared between the full-list build (static mode) and
+// the restricted plurality/approval-mean-only rebuild (dynamic mode) --
+// dynamic abandonment only has a well-defined ballot for those two rules
+// (approval-tau's fixed threshold and PAV's committee scoring don't have a
+// natural per-candidate-rank "abandon toward viability" analog).
+const RULE_LABELS = {
+  plurality: 'Plurality',
+  'approval-mean': 'Approval (mean threshold)',
+  'approval-tau': 'Approval (fixed τ)',
+  pav: 'PAV (proportional approval)',
+};
+const DYNAMIC_MODE_RULES = ['plurality', 'approval-mean'];
 
 const state = {
   data: null,
@@ -24,7 +41,16 @@ const state = {
   mSweepResults: null,
   usePav: false,
   showAt3MSweep: true,
+  resultsView: 'primary',
+  detail: null,
+  drawCtx: null,
   pendingKinds: new Set(),
+  dynamicMode: false,
+  lambda: 0.3,
+  eta: 0.03,
+  t: 0,
+  dynamicResult: null, // { ctx, steps, equilibrium, letterMap } when dynamicMode is on, else null
+  letterMap: null, // mirrors dynamicResult.letterMap; null in static mode
 };
 
 function activeRules() {
@@ -79,25 +105,28 @@ function buildStateSelect() {
 }
 
 function buildRuleKControls() {
-  const ruleSelect = el('rule-select');
-  ruleSelect.innerHTML = '';
-  const ruleLabels = {
-    plurality: 'Plurality',
-    'approval-mean': 'Approval (mean threshold)',
-    'approval-tau': 'Approval (fixed τ)',
-    pav: 'PAV (proportional approval)',
-  };
-  // The illustrative draw is a single iteration (cheap even for PAV's
-  // brute-force committee search), so it always offers every rule --
-  // independent of the "Use PAV" toggle, which only gates the expensive
-  // nSim-repeated full sweep below.
-  [...RULES, ...OPTIONAL_RULES].forEach((r) => ruleSelect.appendChild(new Option(ruleLabels[r], r)));
-  ruleSelect.value = state.rule;
+  rebuildRuleSelect();
 
   const kSelect = el('k-select');
   kSelect.innerHTML = '';
   K_VALUES.forEach((k) => kSelect.appendChild(new Option(`top-${k}`, k)));
   kSelect.value = state.k;
+}
+
+// The illustrative draw is a single iteration (cheap even for PAV's
+// brute-force committee search), so in STATIC mode it always offers every
+// rule -- independent of the "Use PAV" toggle, which only gates the
+// expensive nSim-repeated full sweep below. In DYNAMIC mode, only plurality
+// and approval-mean have a well-defined abandonment ballot, so the dropdown
+// is restricted to those two -- if the previously-active rule isn't among
+// them, snap to plurality.
+function rebuildRuleSelect() {
+  const ruleSelect = el('rule-select');
+  const allowed = state.dynamicMode ? DYNAMIC_MODE_RULES : [...RULES, ...OPTIONAL_RULES];
+  ruleSelect.innerHTML = '';
+  allowed.forEach((r) => ruleSelect.appendChild(new Option(RULE_LABELS[r], r)));
+  if (!allowed.includes(state.rule)) state.rule = 'plurality';
+  ruleSelect.value = state.rule;
 }
 
 function syncParamLabels() {
@@ -113,6 +142,11 @@ function syncParamLabels() {
   el('nsim-value').textContent = String(state.config.nSim);
   el('use-pav-checkbox').checked = state.usePav;
   el('show-at3-msweep-checkbox').checked = state.showAt3MSweep;
+  el('dynamic-mode-checkbox').checked = state.dynamicMode;
+  el('lambda-slider').value = state.lambda;
+  el('lambda-value').textContent = state.lambda.toFixed(2);
+  el('eta-slider').value = state.eta;
+  el('eta-value').textContent = state.eta.toFixed(3);
 }
 
 // ---- Event wiring ---------------------------------------------------------
@@ -186,20 +220,154 @@ function wireControls() {
     runAll();
   });
 
+  el('dynamic-mode-checkbox').addEventListener('change', (e) => {
+    state.dynamicMode = e.target.checked;
+    rebuildRuleSelect();
+    runAll();
+  });
+
+  el('lambda-slider').addEventListener('input', (e) => {
+    el('lambda-value').textContent = Number(e.target.value).toFixed(2);
+  });
+  el('lambda-slider').addEventListener('change', (e) => {
+    state.lambda = Number(e.target.value);
+    runAll();
+  });
+
+  el('eta-slider').addEventListener('input', (e) => {
+    el('eta-value').textContent = Number(e.target.value).toFixed(3);
+  });
+  el('eta-slider').addEventListener('change', (e) => {
+    state.eta = Number(e.target.value);
+    runAll();
+  });
+
+  // Scrubbing t is a pure array-index operation over already-computed
+  // per-round snapshots -- no 'change'-triggered recompute needed, 'input'
+  // alone re-renders instantly.
+  el('t-slider').addEventListener('input', (e) => {
+    state.t = Number(e.target.value);
+    el('t-value').textContent = String(state.t);
+    renderIllustrativeFromStep();
+  });
+
   // Display-only toggle -- the M-sweep always computes all 3 series, so this
   // just re-renders from the already-computed results, no new sweep needed.
   el('show-at3-msweep-checkbox').addEventListener('change', (e) => {
     state.showAt3MSweep = e.target.checked;
     renderMSweepCharts();
   });
+
+  // Display-only toggle -- the current draw's detail already has both
+  // rankings computed, so this just re-renders the results table.
+  el('results-view-primary-btn').addEventListener('click', () => setResultsView('primary'));
+  el('results-view-general-btn').addEventListener('click', () => setResultsView('general'));
+  el('results-view-histogram-btn').addEventListener('click', () => setResultsView('histogram'));
+}
+
+function setResultsView(view) {
+  state.resultsView = view;
+  el('results-view-primary-btn').classList.toggle('active', view === 'primary');
+  el('results-view-general-btn').classList.toggle('active', view === 'general');
+  el('results-view-histogram-btn').classList.toggle('active', view === 'histogram');
+  renderResultsPanel();
+}
+
+function renderResultsPanel() {
+  if (!state.detail) return;
+  if (state.resultsView === 'histogram') {
+    renderVoteShareHistogram(el('election-results'), state.detail, state.drawCtx, state.letterMap);
+  } else {
+    renderElectionResults(el('election-results'), state.detail, state.drawCtx, state.resultsView, state.rule, state.letterMap);
+  }
 }
 
 // ---- Rendering -------------------------------------------------------------
 
 function renderIllustrative() {
   const stateParams = currentStateParams();
-  const { ctx, detail } = runIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex);
-  renderDrawIllustration(el('draw-illustration'), detail, ctx, stateParams);
+
+  if (state.dynamicMode) {
+    const result = runDynamicIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex, {
+      lambda: state.lambda,
+      eta: state.eta,
+    });
+    state.dynamicResult = result;
+    state.drawCtx = result.ctx;
+    state.letterMap = result.letterMap;
+    state.t = result.steps.length - 1; // default to the final round on a fresh run
+    el('t-slider').max = String(result.steps.length - 1);
+    el('t-slider').value = String(state.t);
+    el('t-value').textContent = String(state.t);
+    renderEquilibriumBadge(result.equilibrium);
+    renderMetricsVsTCharts(result.steps);
+  } else {
+    const { ctx, detail } = runIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex);
+    state.detail = detail;
+    state.drawCtx = ctx;
+    state.dynamicResult = null;
+    state.letterMap = null;
+    renderEquilibriumBadge(null);
+  }
+
+  el('dynamic-step-panel').hidden = !state.dynamicMode;
+  el('t-metrics-section').hidden = !state.dynamicMode;
+  document.body.classList.toggle('has-dynamic-footer', state.dynamicMode);
+  renderIllustrativeFromStep();
+}
+
+// Re-renders the density chart / draw-metrics / election-results from
+// whichever detail is current -- state.dynamicResult.steps[state.t] in
+// dynamic mode, or the static detail already assigned in renderIllustrative()
+// otherwise. Reused by both the initial render and the t-slider's scrub
+// handler (a pure array-index operation, no recomputation).
+function renderIllustrativeFromStep() {
+  const stateParams = currentStateParams();
+  if (state.dynamicMode) {
+    state.detail = state.dynamicResult.steps[state.t];
+  }
+  renderDensityChart(el('density-chart'), stateParams, state.detail, state.drawCtx);
+  renderDrawMetrics(el('draw-illustration'), state.detail, state.drawCtx);
+  renderResultsPanel();
+}
+
+function renderEquilibriumBadge(equilibrium) {
+  const node = el('equilibrium-badge');
+  if (!equilibrium) {
+    node.textContent = '';
+    node.className = 'equilibrium-badge';
+    return;
+  }
+  const label =
+    equilibrium.type === 'trivial'
+      ? 'N/A (M ≤ k, no elimination threshold)'
+      : equilibrium.type === 'duvergerian'
+        ? 'Duvergerian equilibrium'
+        : 'Non-Duvergerian (plateau)';
+  const note =
+    equilibrium.type === 'trivial' ? '' : equilibrium.converged ? ' — converged' : ' — hit iteration cap without converging';
+  node.textContent = `${label}${note} (t=${equilibrium.finalT})`;
+  node.className = `equilibrium-badge ${equilibrium.type}`;
+}
+
+function renderMetricsVsTCharts(steps) {
+  const grid = el('t-metrics-grid');
+  grid.innerHTML = '';
+  METRICS.forEach((meta) => {
+    const cell = document.createElement('div');
+    cell.className = 'metric-chart-cell';
+    cell.title = 'Click to enlarge';
+    grid.appendChild(cell);
+    renderMetricVsTChart(cell, meta, steps);
+    cell.addEventListener('click', () => openTMetricModal(meta));
+  });
+}
+
+function openTMetricModal(meta) {
+  const body = el('chart-modal-body');
+  body.innerHTML = '';
+  el('chart-modal-overlay').hidden = false; // must be visible before rendering so SVG getBBox() legend layout works
+  renderMetricVsTChart(body, meta, state.dynamicResult.steps, { height: 420 });
 }
 
 function renderMetricCharts(sweepResults) {
@@ -274,7 +442,6 @@ function setStatus(text, isError = false) {
 
 function runAll() {
   const stateParams = currentStateParams();
-  renderDensityChart(el('density-chart'), stateParams);
   renderIllustrative();
 
   state.requestId += 1;

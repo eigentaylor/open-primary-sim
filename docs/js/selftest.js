@@ -6,6 +6,7 @@
 import { mixtureCdf, sampleMixture, mixtureMedianAnalytic, makeRng, median } from './distributions.js';
 import { runSweep } from './sweep.js';
 import { loadStatesData } from './data-loader.js';
+import { runDynamicIllustrativeDraw } from './dynamic-process.js';
 
 console.log('[selftest] running debug self-tests...');
 
@@ -92,10 +93,90 @@ function testVseHundredWhenWinnerEqualsCc() {
   console.log('[selftest] VSE=100% rigged check done');
 }
 
+// 5. Dynamic abandonment process (dynamic-process.js) checks. A synthetic
+// bimodal state so candidates spread across two clusters, giving the
+// process something nontrivial to differentiate.
+const DYNAMIC_TEST_STATE = { pi: [0.5, 0.5], mu: [-1, 1], sigma: [0.6, 0.6], std: 1.2, mean: 0, median: 0 };
+
+// 5a. M<=k: no (k+1)-th candidate exists, so the process must stop
+// immediately at a single trivial, already-converged t=0 snapshot.
+function testDynamicTrivialWhenMLteK() {
+  const config = { N: 500, M: 5, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'plurality', 5, 0, { lambda: 0.3, eta: 0.03 });
+  console.assert(r.steps.length === 1, `[selftest] expected 1 step at M<=k, got ${r.steps.length}`);
+  console.assert(r.equilibrium.type === 'trivial', `[selftest] expected trivial equilibrium at M<=k, got ${r.equilibrium.type}`);
+  console.log('[selftest] dynamic-process trivial M<=k check done');
+}
+
+// 5b. lambda=1, eta=0 should converge fast to a clean, fully-collapsed
+// equilibrium (no tolerance means even the top-loser itself isn't safe).
+function testDynamicFastConvergenceAtExtremeLambdaEta() {
+  const config = { N: 2000, M: 10, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'plurality', 2, 0, { lambda: 1.0, eta: 0.0 });
+  console.assert(r.equilibrium.converged, `[selftest] expected convergence at lambda=1,eta=0`);
+  console.assert(r.steps.length < 20, `[selftest] expected fast convergence at lambda=1,eta=0, took ${r.steps.length} steps`);
+  console.assert(
+    r.equilibrium.type === 'duvergerian',
+    `[selftest] expected duvergerian equilibrium at lambda=1,eta=0, got ${r.equilibrium.type}`
+  );
+  console.log('[selftest] dynamic-process fast-convergence check done');
+}
+
+// 5c. Large eta with M close to k should sustain more than k+1 candidates
+// with meaningful support for longer than eta=0 does (tolerance suppresses
+// elimination) -- compare the SAME seed/config at eta=0.1 vs eta=0.
+function testDynamicLargeEtaSuppressesElimination() {
+  const config = { N: 2000, M: 7, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const rLarge = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 7, 'plurality', 5, 0, { lambda: 0.3, eta: 0.1 });
+  const rZero = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 7, 'plurality', 5, 0, { lambda: 0.3, eta: 0.0 });
+  console.assert(
+    rLarge.equilibrium.nontrivialCount >= rZero.equilibrium.nontrivialCount,
+    `[selftest] expected eta=0.1 to retain >= as many viable candidates as eta=0 ` +
+      `(got ${rLarge.equilibrium.nontrivialCount} vs ${rZero.equilibrium.nontrivialCount})`
+  );
+  console.log('[selftest] dynamic-process large-eta-suppresses-elimination check done');
+}
+
+// 5d. The Consensus Candidate and candidate positions never change across
+// the process -- computed once, identical at every t by construction.
+function testDynamicCcAndCandidatesInvariant() {
+  const config = { N: 2000, M: 10, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'plurality', 2, 0, { lambda: 0.3, eta: 0.03 });
+  const first = r.steps[0];
+  const last = r.steps[r.steps.length - 1];
+  console.assert(
+    first.cc.originalIndex === last.cc.originalIndex,
+    `[selftest] expected CC identity to be invariant across t, got ${first.cc.originalIndex} vs ${last.cc.originalIndex}`
+  );
+  console.assert(first.candidates === last.candidates, `[selftest] expected the same candidates array reference at every t`);
+  console.log('[selftest] dynamic-process CC/candidates invariant check done');
+}
+
+// 5e. Approval-mean mode should never crash and should never assign a
+// candidate zero share while some voter's current choice points at it (a
+// voter always approves at least their own current choice).
+function testDynamicApprovalOwnChoiceAlwaysApproved() {
+  const config = { N: 1000, M: 10, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'approval-mean', 2, 0, { lambda: 0.3, eta: 0.03 });
+  for (const step of r.steps) {
+    const finalistShares = step.finalists.map((f) => f.tallyValue);
+    console.assert(
+      finalistShares.every((v) => v > 0),
+      `[selftest] expected every finalist to retain positive approval share, got ${finalistShares}`
+    );
+  }
+  console.log('[selftest] dynamic-process approval-mean own-choice check done');
+}
+
 Promise.all([testMixtureCdf(), testSampleMixtureMoments()])
   .then(() => {
     testSymmetricMedian();
     testVseHundredWhenWinnerEqualsCc();
+    testDynamicTrivialWhenMLteK();
+    testDynamicFastConvergenceAtExtremeLambdaEta();
+    testDynamicLargeEtaSuppressesElimination();
+    testDynamicCcAndCandidatesInvariant();
+    testDynamicApprovalOwnChoiceAlwaysApproved();
     console.log('[selftest] all self-tests completed (see above for any assertion failures)');
   })
   .catch((err) => console.error('[selftest] failed to run', err));
