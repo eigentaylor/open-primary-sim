@@ -32,6 +32,7 @@ export const DEFAULT_CONFIG = {
   tau: 0.25, // approval fixed-threshold radius (exploratory, no paper basis)
   lambda: 0.3, // dynamic-process reconsideration proportion per round -- shared with the illustrative draw
   eta: 0.03, // dynamic-process viability tolerance -- shared with the illustrative draw
+  alpha: 2, // dynamic-process abandon-probability exponent (1-vr)^alpha -- shared with the illustrative draw
 };
 
 export const HEADLINE_CONFIGS = [
@@ -68,7 +69,7 @@ function runOneConfig(ctx, rule, k, nSim, rng) {
   };
   for (let i = 0; i < nSim; i++) {
     const m = baseRule
-      ? runDynamicIteration(ctx, baseRule, k, rng, { lambda: ctx.config.lambda, eta: ctx.config.eta })
+      ? runDynamicIteration(ctx, baseRule, k, rng, { lambda: ctx.config.lambda, eta: ctx.config.eta, alpha: ctx.config.alpha })
       : runIteration(ctx, rule, k, rng);
     sums.maxC += m.maxC;
     sums.partyDiversity += m.partyDiversity;

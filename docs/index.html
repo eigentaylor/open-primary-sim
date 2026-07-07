@@ -90,6 +90,10 @@
         <label for="eta-slider">η — viability tolerance <span id="eta-value"></span></label>
         <input id="eta-slider" type="range" min="0" max="0.1" step="0.005" />
       </div>
+      <div class="control-group slider">
+        <label for="alpha-slider">α — abandon-probability exponent, (1-VR)^α <span id="alpha-value"></span></label>
+        <input id="alpha-slider" type="range" min="1" max="4" step="0.5" />
+      </div>
 
       <div id="sweep-status" class="status"></div>
     </section>

@@ -142,7 +142,7 @@ function classifyEquilibrium(finalRanking, k, tw, converged, finalT) {
 // iteration only ever uses the final round's outcome. This difference in
 // per-round rng consumption is fine: the sweep's `rng` is an independent
 // stream from the illustrative draw's, never required to reproduce it.
-function runRounds({ pool, weights, utilMatrix, N, M, candidates, k, rule, rng, lambda, eta, tw, utilitySum, full, buildDetail }) {
+function runRounds({ pool, weights, utilMatrix, N, M, candidates, k, rule, rng, lambda, eta, alpha, tw, utilitySum, full, buildDetail }) {
   // Trivial case: no (k+1)-th candidate exists, so there's no pivot and no
   // abandonment step can run -- report a single t=0 snapshot as converged.
   if (M <= k) {
@@ -206,8 +206,13 @@ function runRounds({ pool, weights, utilMatrix, N, M, candidates, k, rule, rng, 
         // s(j) > 0 always (see computeShare's header comment), and since
         // shares are sorted descending and j's rank is > k+1, pivotShare
         // (rank k+1's share) >= s(j) > 0 -- so this division is always safe.
+        // Raising (1-vr) to alpha > 1 softens the abandon probability near
+        // vr=1 (e.g. vr=0.95, alpha=2 -> 0.25% instead of 5%), since a
+        // near-viable favorite shouldn't be nearly as likely to be dropped
+        // as a hopeless one.
         const vr = shareArr[j] / pivotShare;
-        if (rng.uniform() < 1 - vr) {
+        const pAbandon = Math.pow(1 - vr, alpha);
+        if (rng.uniform() < pAbandon) {
           let mask = towardMaskCache.get(j);
           if (!mask) {
             mask = new Uint8Array(M);
@@ -240,7 +245,7 @@ function runRounds({ pool, weights, utilMatrix, N, M, candidates, k, rule, rng, 
 // dynamic-mode run with the same seed/drawIndex/rule/k draws the IDENTICAL
 // candidate slate a static illustrative draw would (drawCandidates() is
 // this rng stream's first consumption in both paths).
-export function runDynamicIllustrativeDraw(stateParams, config, seed, rule, k, drawIndex, { lambda, eta }) {
+export function runDynamicIllustrativeDraw(stateParams, config, seed, rule, k, drawIndex, { lambda, eta, alpha = 2 }) {
   const label = `illustrative_${drawIndex}`;
   const poolRng = makeRng(hashSeed(seed, `${label}_pool`));
   const ctx = setupRun(stateParams, config, poolRng);
@@ -275,6 +280,7 @@ export function runDynamicIllustrativeDraw(stateParams, config, seed, rule, k, d
     rng: processRng,
     lambda,
     eta,
+    alpha,
     tw,
     utilitySum,
     full: true,
@@ -296,7 +302,7 @@ export function runDynamicIllustrativeDraw(stateParams, config, seed, rule, k, d
 // is this rng stream's first consumption) and returns ONLY the final
 // round's metrics, discarding the trajectory (a sweep iteration only ever
 // aggregates the equilibrium outcome, never the intermediate steps).
-export function runDynamicIteration(ctx, rule, k, rng, { lambda, eta }) {
+export function runDynamicIteration(ctx, rule, k, rng, { lambda, eta, alpha = 2 }) {
   const { pool, xMedianPool, weights, stateParams, config } = ctx;
   const N = pool.length;
 
@@ -320,6 +326,7 @@ export function runDynamicIteration(ctx, rule, k, rng, { lambda, eta }) {
     rng,
     lambda,
     eta,
+    alpha,
     tw,
     utilitySum,
     full: false,

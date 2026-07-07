@@ -150,6 +150,8 @@ function syncParamLabels() {
   el('lambda-value').textContent = state.config.lambda.toFixed(2);
   el('eta-slider').value = state.config.eta;
   el('eta-value').textContent = state.config.eta.toFixed(3);
+  el('alpha-slider').value = state.config.alpha;
+  el('alpha-value').textContent = state.config.alpha.toFixed(1);
   el('dynamic-sweep-checkbox').checked = state.useDynamicSweep;
 }
 
@@ -246,6 +248,14 @@ function wireControls() {
     runAll();
   });
 
+  el('alpha-slider').addEventListener('input', (e) => {
+    el('alpha-value').textContent = Number(e.target.value).toFixed(1);
+  });
+  el('alpha-slider').addEventListener('change', (e) => {
+    state.config.alpha = Number(e.target.value);
+    runAll();
+  });
+
   el('dynamic-sweep-checkbox').addEventListener('change', (e) => {
     state.useDynamicSweep = e.target.checked;
     runAll();
@@ -300,6 +310,7 @@ function renderIllustrative() {
     const result = runDynamicIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex, {
       lambda: state.config.lambda,
       eta: state.config.eta,
+      alpha: state.config.alpha,
     });
     state.dynamicResult = result;
     state.drawCtx = result.ctx;

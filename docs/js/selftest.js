@@ -168,6 +168,21 @@ function testDynamicApprovalOwnChoiceAlwaysApproved() {
   console.log('[selftest] dynamic-process approval-mean own-choice check done');
 }
 
+// 5f. Raising alpha should only ever slow (never speed up) convergence to a
+// duvergerian equilibrium, since (1-vr)^alpha <= (1-vr) for alpha >= 1 and
+// vr in [0,1] -- i.e. abandonment can only become less likely per round.
+function testDynamicHigherAlphaSlowsConvergence() {
+  const config = { N: 2000, M: 10, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const rLow = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'plurality', 2, 0, { lambda: 1.0, eta: 0.0, alpha: 1 });
+  const rHigh = runDynamicIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'plurality', 2, 0, { lambda: 1.0, eta: 0.0, alpha: 4 });
+  console.assert(
+    rHigh.steps.length >= rLow.steps.length,
+    `[selftest] expected alpha=4 to converge no faster than alpha=1 ` +
+      `(got ${rHigh.steps.length} vs ${rLow.steps.length} steps)`
+  );
+  console.log('[selftest] dynamic-process higher-alpha-slows-convergence check done');
+}
+
 Promise.all([testMixtureCdf(), testSampleMixtureMoments()])
   .then(() => {
     testSymmetricMedian();
@@ -177,6 +192,7 @@ Promise.all([testMixtureCdf(), testSampleMixtureMoments()])
     testDynamicLargeEtaSuppressesElimination();
     testDynamicCcAndCandidatesInvariant();
     testDynamicApprovalOwnChoiceAlwaysApproved();
+    testDynamicHigherAlphaSlowsConvergence();
     console.log('[selftest] all self-tests completed (see above for any assertion failures)');
   })
   .catch((err) => console.error('[selftest] failed to run', err));
