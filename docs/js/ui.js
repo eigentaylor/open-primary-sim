@@ -4,6 +4,7 @@
 import { loadStatesData, buildStateOptions } from './data-loader.js';
 import { DEFAULT_CONFIG, fullRulesAndKs, runIllustrativeDraw, RULES, OPTIONAL_RULES, DYNAMIC_RULES, K_VALUES } from './sweep.js';
 import { runDynamicIllustrativeDraw } from './dynamic-process.js';
+import { runLeaderRuleIllustrativeDraw } from './leader-rule-process.js';
 import { renderDensityChart } from './charts/density-chart.js';
 import { renderDrawMetrics } from './charts/draw-illustration.js';
 import { renderElectionResults } from './charts/election-results.js';
@@ -15,17 +16,22 @@ import { renderHeadlineTable } from './charts/headline-table.js';
 import { METRICS } from './metrics-meta.js';
 
 // Rule dropdown labels, shared between the full-list build (static mode) and
-// the restricted plurality/approval-mean-only rebuild (dynamic mode) --
-// dynamic abandonment only has a well-defined ballot for those two rules
-// (approval-tau's fixed threshold and PAV's committee scoring don't have a
-// natural per-candidate-rank "abandon toward viability" analog).
+// the restricted rebuilds for each dynamic-process mode.
 const RULE_LABELS = {
   plurality: 'Plurality',
   'approval-mean': 'Approval (mean threshold)',
   'approval-tau': 'Approval (fixed τ)',
   pav: 'PAV (proportional approval)',
 };
-const DYNAMIC_MODE_RULES = ['plurality', 'approval-mean'];
+// Rules allowed per dynamic-process mode: Duvergerian abandonment has a
+// well-defined ballot for plurality/approval-mean only (approval-tau's fixed
+// threshold and PAV's committee scoring don't have a natural per-candidate-
+// rank "abandon toward viability" analog); the leader rule (see
+// leader-rule-process.js) is approval-only by definition.
+const DYNAMIC_MODE_RULES = {
+  duvergerian: ['plurality', 'approval-mean'],
+  'leader-rule': ['approval-mean'],
+};
 
 const state = {
   data: null,
@@ -45,11 +51,11 @@ const state = {
   detail: null,
   drawCtx: null,
   pendingKinds: new Set(),
-  dynamicMode: false,
+  dynamicMode: 'off', // 'off' | 'duvergerian' | 'leader-rule' -- illustrative-draw-only dynamic process selector
   t: 0,
-  dynamicResult: null, // { ctx, steps, equilibrium, letterMap } when dynamicMode is on, else null
+  dynamicResult: null, // { ctx, steps, equilibrium, letterMap } when dynamicMode !== 'off', else null
   letterMap: null, // mirrors dynamicResult.letterMap; null in static mode
-  useDynamicSweep: false, // separate from dynamicMode -- gates dynamic-process variants in the k-sweep/headline table, not the illustrative draw
+  useDynamicSweep: false, // separate from dynamicMode -- gates Duvergerian dynamic-process variants in the k-sweep/headline table, not the illustrative draw
 };
 
 // lambda/eta live in state.config (see DEFAULT_CONFIG in sweep.js) rather
@@ -119,17 +125,28 @@ function buildRuleKControls() {
 // The illustrative draw is a single iteration (cheap even for PAV's
 // brute-force committee search), so in STATIC mode it always offers every
 // rule -- independent of the "Use PAV" toggle, which only gates the
-// expensive nSim-repeated full sweep below. In DYNAMIC mode, only plurality
-// and approval-mean have a well-defined abandonment ballot, so the dropdown
-// is restricted to those two -- if the previously-active rule isn't among
-// them, snap to plurality.
+// expensive nSim-repeated full sweep below. In a DYNAMIC mode, the dropdown
+// is restricted to whichever rules that mode has a well-defined ballot for
+// (see DYNAMIC_MODE_RULES) -- if the previously-active rule isn't among
+// them, snap to the first allowed rule.
 function rebuildRuleSelect() {
   const ruleSelect = el('rule-select');
-  const allowed = state.dynamicMode ? DYNAMIC_MODE_RULES : [...RULES, ...OPTIONAL_RULES];
+  const allowed = state.dynamicMode !== 'off' ? DYNAMIC_MODE_RULES[state.dynamicMode] : [...RULES, ...OPTIONAL_RULES];
   ruleSelect.innerHTML = '';
   allowed.forEach((r) => ruleSelect.appendChild(new Option(RULE_LABELS[r], r)));
-  if (!allowed.includes(state.rule)) state.rule = 'plurality';
+  if (!allowed.includes(state.rule)) state.rule = allowed[0];
   ruleSelect.value = state.rule;
+}
+
+// Hides the eta/alpha sliders in leader-rule mode -- that rule's
+// approve/disapprove decision is a deterministic strict inequality, with no
+// probabilistic abandon-toward-viability step for eta/alpha to parameterize
+// (see leader-rule-process.js's header comment). Lambda (reconsideration
+// proportion) still applies to both dynamic modes, so it stays visible.
+function syncDynamicVisibility() {
+  const hideEtaAlpha = state.dynamicMode === 'leader-rule';
+  el('eta-control-group').hidden = hideEtaAlpha;
+  el('alpha-control-group').hidden = hideEtaAlpha;
 }
 
 function syncParamLabels() {
@@ -145,7 +162,8 @@ function syncParamLabels() {
   el('nsim-value').textContent = String(state.config.nSim);
   el('use-pav-checkbox').checked = state.usePav;
   el('show-at3-msweep-checkbox').checked = state.showAt3MSweep;
-  el('dynamic-mode-checkbox').checked = state.dynamicMode;
+  el('dynamic-mode-select').value = state.dynamicMode;
+  syncDynamicVisibility();
   el('lambda-slider').value = state.config.lambda;
   el('lambda-value').textContent = state.config.lambda.toFixed(2);
   el('eta-slider').value = state.config.eta;
@@ -226,9 +244,10 @@ function wireControls() {
     runAll();
   });
 
-  el('dynamic-mode-checkbox').addEventListener('change', (e) => {
-    state.dynamicMode = e.target.checked;
+  el('dynamic-mode-select').addEventListener('change', (e) => {
+    state.dynamicMode = e.target.value;
     rebuildRuleSelect();
+    syncDynamicVisibility();
     runAll();
   });
 
@@ -306,26 +325,26 @@ function renderResultsPanel() {
 function renderIllustrative() {
   const stateParams = currentStateParams();
 
-  if (state.dynamicMode) {
+  if (state.dynamicMode === 'duvergerian') {
     const result = runDynamicIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex, {
       lambda: state.config.lambda,
       eta: state.config.eta,
       alpha: state.config.alpha,
     });
-    state.dynamicResult = result;
-    state.drawCtx = result.ctx;
-    state.letterMap = result.letterMap;
-    state.t = result.steps.length - 1; // default to the final round on a fresh run
-    el('t-slider').max = String(result.steps.length - 1);
-    el('t-slider').value = String(state.t);
-    el('t-value').textContent = String(state.t);
     // The equilibrium classifier's nontrivial-share threshold doesn't map
     // cleanly onto approval-mean's ballot structure (approval tallies can
     // sum >100%, so "share of total weight" isn't the same kind of
     // quantity) -- hide the badge there until the classifier is revisited,
     // rather than show a label that isn't meaningful yet.
-    renderEquilibriumBadge(state.rule === 'approval-mean' ? null : result.equilibrium);
-    renderMetricsVsTCharts(result.steps);
+    setDynamicResult(result, state.rule === 'approval-mean' ? null : result.equilibrium);
+  } else if (state.dynamicMode === 'leader-rule') {
+    const result = runLeaderRuleIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex, {
+      lambda: state.config.lambda,
+    });
+    // No rule-specific caveat here: leader-rule's equilibrium.type is always
+    // 'leader-rule'/'trivial' with no nontrivial-count classification to
+    // suppress (unlike the Duvergerian branch above), so always show it.
+    setDynamicResult(result, result.equilibrium);
   } else {
     const { ctx, detail } = runIllustrativeDraw(stateParams, state.config, state.seed, state.rule, state.k, state.drawIndex);
     state.detail = detail;
@@ -335,10 +354,25 @@ function renderIllustrative() {
     renderEquilibriumBadge(null);
   }
 
-  el('dynamic-step-panel').hidden = !state.dynamicMode;
-  el('t-metrics-section').hidden = !state.dynamicMode;
-  document.body.classList.toggle('has-dynamic-footer', state.dynamicMode);
+  el('dynamic-step-panel').hidden = state.dynamicMode === 'off';
+  el('t-metrics-section').hidden = state.dynamicMode === 'off';
+  document.body.classList.toggle('has-dynamic-footer', state.dynamicMode !== 'off');
   renderIllustrativeFromStep();
+}
+
+// Shared tail for both dynamic-process modes: sets up the t-slider at the
+// final round of a fresh run and renders the equilibrium badge + the
+// metrics-vs-t chart grid.
+function setDynamicResult(result, equilibriumForBadge) {
+  state.dynamicResult = result;
+  state.drawCtx = result.ctx;
+  state.letterMap = result.letterMap;
+  state.t = result.steps.length - 1; // default to the final round on a fresh run
+  el('t-slider').max = String(result.steps.length - 1);
+  el('t-slider').value = String(state.t);
+  el('t-value').textContent = String(state.t);
+  renderEquilibriumBadge(equilibriumForBadge);
+  renderMetricsVsTCharts(result.steps);
 }
 
 // Re-renders the density chart / draw-metrics / election-results from
@@ -348,12 +382,13 @@ function renderIllustrative() {
 // handler (a pure array-index operation, no recomputation).
 function renderIllustrativeFromStep() {
   const stateParams = currentStateParams();
-  if (state.dynamicMode) {
+  if (state.dynamicMode !== 'off') {
     state.detail = state.dynamicResult.steps[state.t];
   }
   renderDensityChart(el('density-chart'), stateParams, state.detail, state.drawCtx);
   renderDrawMetrics(el('draw-illustration'), state.detail, state.drawCtx);
   renderResultsPanel();
+  renderInsincereShareBadge();
 }
 
 function renderEquilibriumBadge(equilibrium) {
@@ -368,11 +403,24 @@ function renderEquilibriumBadge(equilibrium) {
       ? 'N/A (M ≤ k, no elimination threshold)'
       : equilibrium.type === 'duvergerian'
         ? 'Duvergerian equilibrium'
-        : 'Non-Duvergerian (plateau)';
+        : equilibrium.type === 'leader-rule'
+          ? 'Leader-rule process'
+          : 'Non-Duvergerian (plateau)';
   const note =
     equilibrium.type === 'trivial' ? '' : equilibrium.converged ? ' — converged' : ' — hit iteration cap without converging';
   node.textContent = `${label}${note} (t=${equilibrium.finalT})`;
   node.className = `equilibrium-badge ${equilibrium.type}`;
+}
+
+// Only leader-rule mode's steps carry an insincereShare field (see
+// leader-rule-process.js) -- cleared in every other mode.
+function renderInsincereShareBadge() {
+  const node = el('insincere-share-badge');
+  if (state.dynamicMode === 'leader-rule' && state.detail && state.detail.insincereShare != null) {
+    node.textContent = `Insincere ballots: ${(state.detail.insincereShare * 100).toFixed(1)}%`;
+  } else {
+    node.textContent = '';
+  }
 }
 
 function renderMetricsVsTCharts(steps) {

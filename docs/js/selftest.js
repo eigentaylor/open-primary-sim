@@ -6,7 +6,8 @@
 import { mixtureCdf, sampleMixture, mixtureMedianAnalytic, makeRng, median } from './distributions.js';
 import { runSweep } from './sweep.js';
 import { loadStatesData } from './data-loader.js';
-import { runDynamicIllustrativeDraw } from './dynamic-process.js';
+import { runDynamicIllustrativeDraw, MAX_ITERATIONS } from './dynamic-process.js';
+import { runLeaderRuleIllustrativeDraw } from './leader-rule-process.js';
 
 console.log('[selftest] running debug self-tests...');
 
@@ -183,6 +184,60 @@ function testDynamicHigherAlphaSlowsConvergence() {
   console.log('[selftest] dynamic-process higher-alpha-slows-convergence check done');
 }
 
+// 6. Multi-winner leader rule (leader-rule-process.js) checks. Same
+// synthetic bimodal state as the Duvergerian checks above; rule is always
+// 'approval-mean' since the leader rule is approval-only.
+
+// 6a. M<=k: same trivial-case convention as Duvergerian abandonment.
+function testLeaderRuleTrivialWhenMLteK() {
+  const config = { N: 500, M: 5, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runLeaderRuleIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'approval-mean', 5, 0, { lambda: 0.3 });
+  console.assert(r.steps.length === 1, `[selftest] expected 1 step at M<=k, got ${r.steps.length}`);
+  console.assert(r.equilibrium.type === 'trivial', `[selftest] expected trivial equilibrium at M<=k, got ${r.equilibrium.type}`);
+  console.log('[selftest] leader-rule trivial M<=k check done');
+}
+
+// 6b. t=0's ballot is "approve only your favorite" -- trivially a valid
+// prefix of the voter's own utility order, so insincereShare must be
+// EXACTLY 0 (not just small), per the strict '>' sentinel logic in
+// computeInsincereShare.
+function testLeaderRuleSincereAtT0() {
+  const config = { N: 2000, M: 10, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runLeaderRuleIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'approval-mean', 2, 0, { lambda: 0.3 });
+  console.assert(
+    r.steps[0].insincereShare === 0,
+    `[selftest] expected exactly 0 insincere share at t=0, got ${r.steps[0].insincereShare}`
+  );
+  console.log('[selftest] leader-rule sincere-at-t0 check done');
+}
+
+// 6c. The Consensus Candidate and candidate positions never change across
+// the process, same invariant as Duvergerian abandonment.
+function testLeaderRuleCcAndCandidatesInvariant() {
+  const config = { N: 2000, M: 10, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runLeaderRuleIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'approval-mean', 2, 0, { lambda: 0.3 });
+  const first = r.steps[0];
+  const last = r.steps[r.steps.length - 1];
+  console.assert(
+    first.cc.originalIndex === last.cc.originalIndex,
+    `[selftest] expected CC identity to be invariant across t, got ${first.cc.originalIndex} vs ${last.cc.originalIndex}`
+  );
+  console.assert(first.candidates === last.candidates, `[selftest] expected the same candidates array reference at every t`);
+  console.log('[selftest] leader-rule CC/candidates invariant check done');
+}
+
+// 6d. Basic convergence smoke test: should never throw and should never
+// exceed the shared iteration cap.
+function testLeaderRuleConvergenceSmoke() {
+  const config = { N: 2000, M: 10, delta: 1.0, gamma: 0.0, tau: 0.25 };
+  const r = runLeaderRuleIllustrativeDraw(DYNAMIC_TEST_STATE, config, 42, 'approval-mean', 2, 0, { lambda: 0.3 });
+  console.assert(
+    r.equilibrium.finalT <= MAX_ITERATIONS,
+    `[selftest] expected finalT <= MAX_ITERATIONS, got ${r.equilibrium.finalT}`
+  );
+  console.log('[selftest] leader-rule convergence smoke check done');
+}
+
 Promise.all([testMixtureCdf(), testSampleMixtureMoments()])
   .then(() => {
     testSymmetricMedian();
@@ -193,6 +248,10 @@ Promise.all([testMixtureCdf(), testSampleMixtureMoments()])
     testDynamicCcAndCandidatesInvariant();
     testDynamicApprovalOwnChoiceAlwaysApproved();
     testDynamicHigherAlphaSlowsConvergence();
+    testLeaderRuleTrivialWhenMLteK();
+    testLeaderRuleSincereAtT0();
+    testLeaderRuleCcAndCandidatesInvariant();
+    testLeaderRuleConvergenceSmoke();
     console.log('[selftest] all self-tests completed (see above for any assertion failures)');
   })
   .catch((err) => console.error('[selftest] failed to run', err));

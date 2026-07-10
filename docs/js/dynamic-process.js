@@ -36,13 +36,13 @@ export const CONVERGENCE_EPS = 1e-4;
 export const MAX_ITERATIONS = 250;
 const NONTRIVIAL_SHARE_FRAC = 0.02;
 
-const FINALIST_LETTERS = 'ABCDE';
+export const FINALIST_LETTERS = 'ABCDE';
 
 // Full N*M utility matrix (row-major: utilMatrix[i*M+j] = voter i's utility
 // for candidate j), built once since positions are fixed for the whole
 // process -- every round's "most preferred within a filtered subset" lookup
 // reads from this instead of recomputing electabilityUtility() every time.
-function buildUtilityMatrix(pool, candidates, xMedianPool, gamma) {
+export function buildUtilityMatrix(pool, candidates, xMedianPool, gamma) {
   const N = pool.length;
   const M = candidates.length;
   const util = new Float64Array(N * M);
@@ -57,7 +57,7 @@ function buildUtilityMatrix(pool, candidates, xMedianPool, gamma) {
 
 // t=0: every voter's current choice is their own highest-utility candidate
 // (ties broken via the run's seeded rng, same convention as pluralityTally).
-function computeInitialChoice(utilMatrix, N, M, rng) {
+export function computeInitialChoice(utilMatrix, N, M, rng) {
   const choice = new Int32Array(N);
   const tied = new Int32Array(M);
   for (let i = 0; i < N; i++) {
@@ -117,7 +117,7 @@ function argmaxAmongMask(utilMatrix, i, M, mask, rng, tiedScratch, fallbackIdx) 
 // Builds one "held election" snapshot from a round's vote shares, shaped
 // exactly like simulate.js's runIterationDetailed() return value (minus the
 // `metrics`/`ccRank` fields it doesn't yet have -- filled in by the caller).
-function buildRanking(shareArr, candidates, k, rng, utilitySum) {
+export function buildRanking(shareArr, candidates, k, rng, utilitySum) {
   const ranking = rankCandidates(shareArr, candidates, rng, utilitySum);
   const finalists = ranking.slice(0, k);
   return { ranking, finalists };
